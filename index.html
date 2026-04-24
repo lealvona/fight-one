@@ -1,0 +1,1565 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cadence Fighter POC</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --ink: #f4efe4;
+      --muted: #aeb6bb;
+      --red: #e45745;
+      --gold: #f1bd4b;
+      --cyan: #47c7d9;
+      --green: #75c267;
+      --violet: #b78cff;
+      --panel: rgba(8, 13, 16, 0.72);
+      --line: rgba(244, 239, 228, 0.16);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      overflow: hidden;
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--ink);
+      background: #07090a;
+    }
+
+    canvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+    }
+
+    .hud {
+      position: fixed;
+      inset: 10px 14px auto;
+      display: grid;
+      grid-template-columns: minmax(220px, 360px) minmax(220px, 320px) minmax(220px, 360px);
+      gap: 10px;
+      pointer-events: none;
+    }
+
+    .plate {
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(8, 13, 16, 0.70), rgba(5, 8, 10, 0.58));
+      backdrop-filter: blur(14px) saturate(1.1);
+      border-radius: 8px;
+      box-shadow: 0 18px 48px rgba(0, 0, 0, 0.34), inset 0 1px rgba(255,255,255,0.06);
+    }
+
+    .fighterPanel {
+      padding: 10px;
+      min-width: 0;
+    }
+
+    .fighterName {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .bars {
+      display: grid;
+      gap: 5px;
+      margin-top: 7px;
+    }
+
+    .bar {
+      height: 9px;
+      border: 1px solid rgba(255,255,255,0.14);
+      background: rgba(0,0,0,0.28);
+      border-radius: 999px;
+      overflow: hidden;
+    }
+
+    .fill {
+      width: 100%;
+      height: 100%;
+      background: var(--green);
+      transform-origin: left center;
+    }
+
+    .posture .fill { background: var(--gold); }
+    .enemy .health .fill { background: var(--red); }
+
+    .queue {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 5px;
+      margin-top: 8px;
+    }
+
+    .slot {
+      min-height: 24px;
+      display: grid;
+      place-items: center;
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 6px;
+      background: rgba(255,255,255,0.05);
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 750;
+    }
+
+    .slot.live {
+      color: #0b1012;
+      background: var(--gold);
+      border-color: transparent;
+    }
+
+    .centerPanel {
+      padding: 10px;
+      text-align: center;
+    }
+
+    .range {
+      font-size: 12px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .callout {
+      margin-top: 6px;
+      min-height: 24px;
+      font-size: 18px;
+      font-weight: 850;
+      color: var(--ink);
+    }
+
+    .tempo {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 8px;
+      margin-top: 9px;
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    .scoreRow {
+      display: flex;
+      justify-content: center;
+      gap: 6px;
+      margin-top: 8px;
+    }
+
+    .pip {
+      width: 9px;
+      height: 9px;
+      border: 1px solid rgba(255,255,255,0.28);
+      border-radius: 999px;
+      background: rgba(255,255,255,0.06);
+    }
+
+    .pip.on.player { background: var(--cyan); border-color: transparent; }
+    .pip.on.enemy { background: var(--red); border-color: transparent; }
+
+    .matchOverlay {
+      position: fixed;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      pointer-events: none;
+      z-index: 4;
+    }
+
+    .matchCard {
+      min-width: min(560px, calc(100vw - 28px));
+      padding: 24px 28px;
+      border: 1px solid rgba(244,239,228,0.18);
+      border-radius: 8px;
+      background: linear-gradient(180deg, rgba(4,8,10,0.84), rgba(4,6,7,0.68));
+      box-shadow: 0 28px 80px rgba(0,0,0,0.48), inset 0 1px rgba(255,255,255,0.08);
+      backdrop-filter: blur(16px);
+      text-align: center;
+    }
+
+    .matchEyebrow {
+      font-size: 12px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .matchTitle {
+      margin-top: 8px;
+      font-size: clamp(42px, 8vw, 92px);
+      line-height: 0.9;
+      font-weight: 950;
+      color: var(--ink);
+      text-transform: uppercase;
+    }
+
+    .matchSub {
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .startButton {
+      margin-top: 18px;
+      min-width: 180px;
+      min-height: 42px;
+      border: 1px solid rgba(241,189,75,0.52);
+      border-radius: 6px;
+      background: rgba(241,189,75,0.14);
+      color: var(--ink);
+      font-weight: 850;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      pointer-events: auto;
+      cursor: pointer;
+    }
+
+    .matchOverlay.hidden {
+      display: none;
+    }
+
+    .controls {
+      position: fixed;
+      left: 14px;
+      right: 14px;
+      bottom: 14px;
+      display: grid;
+      grid-template-columns: 1.05fr 0.95fr 0.9fr;
+      gap: 10px;
+      pointer-events: none;
+    }
+
+    .matrix, .keys, .telemetry {
+      padding: 12px;
+    }
+
+    .keysGrid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 7px;
+      margin-top: 8px;
+      pointer-events: auto;
+    }
+
+    .key {
+      min-height: 34px;
+      display: grid;
+      place-items: center;
+      border: 1px solid rgba(255,255,255,0.13);
+      border-radius: 6px;
+      background: rgba(255,255,255,0.055);
+      font-size: 11px;
+      line-height: 1.15;
+      color: var(--muted);
+      text-align: center;
+      cursor: pointer;
+      user-select: none;
+      transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
+    }
+
+    .key:active {
+      transform: translateY(1px);
+      border-color: rgba(241,189,75,0.7);
+      background: rgba(241,189,75,0.14);
+    }
+
+    .key b {
+      display: block;
+      color: var(--ink);
+      font-size: 14px;
+    }
+
+    .sectionTitle {
+      font-size: 12px;
+      letter-spacing: 0.10em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .matrixRows {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 7px;
+      margin-top: 8px;
+    }
+
+    .rule {
+      min-height: 34px;
+      padding: 7px;
+      border: 1px solid rgba(255,255,255,0.13);
+      border-radius: 6px;
+      background: rgba(255,255,255,0.055);
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.2;
+    }
+
+    .rule b {
+      display: block;
+      color: var(--ink);
+      font-size: 12px;
+    }
+
+    .eventLog {
+      display: grid;
+      gap: 5px;
+      margin-top: 8px;
+      min-height: 80px;
+      max-height: 90px;
+      overflow: hidden;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 10px;
+      line-height: 1.2;
+      color: var(--muted);
+    }
+
+    .eventLine {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .eventLine b {
+      color: var(--ink);
+      font-weight: 800;
+    }
+
+    @media (max-width: 860px) {
+      .hud {
+        grid-template-columns: 1fr;
+        inset: 10px 10px auto;
+      }
+
+      .centerPanel {
+        order: 3;
+      }
+
+      .controls {
+        grid-template-columns: 1fr;
+        left: 10px;
+        right: 10px;
+        bottom: 10px;
+      }
+
+      .matrix {
+        display: none;
+      }
+
+      .telemetry {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="game" aria-label="Cadence Fighter prototype"></canvas>
+
+  <div class="hud">
+    <section class="plate fighterPanel">
+      <div class="fighterName"><span>Operator</span><span id="pState">ready</span></div>
+      <div class="bars">
+        <div class="bar health"><div id="pHealth" class="fill"></div></div>
+        <div class="bar posture"><div id="pPosture" class="fill"></div></div>
+      </div>
+      <div id="pQueue" class="queue"></div>
+    </section>
+
+    <section class="plate centerPanel">
+      <div id="range" class="range">entry range</div>
+      <div id="callout" class="callout">Cadence governs intent</div>
+      <div class="tempo">
+        <span>input tempo <b id="pTempo">0.00</b></span>
+        <span>round <b id="roundInfo">0</b></span>
+        <span>AI tempo <b id="eTempo">0.00</b></span>
+      </div>
+      <div id="scoreRow" class="scoreRow"></div>
+    </section>
+
+    <section class="plate fighterPanel enemy">
+      <div class="fighterName"><span>Mirror</span><span id="eState">reading</span></div>
+      <div class="bars">
+        <div class="bar health"><div id="eHealth" class="fill"></div></div>
+        <div class="bar posture"><div id="ePosture" class="fill"></div></div>
+      </div>
+      <div id="eQueue" class="queue"></div>
+    </section>
+  </div>
+
+  <div class="controls">
+    <section class="plate keys">
+      <div class="sectionTitle">Eight-button intent deck</div>
+      <div class="keysGrid">
+        <div class="key" data-key="j"><span><b>J</b>left hand</span></div>
+        <div class="key" data-key="k"><span><b>K</b>right hand</span></div>
+        <div class="key" data-key="u"><span><b>U</b>left leg</span></div>
+        <div class="key" data-key="i"><span><b>I</b>right leg</span></div>
+        <div class="key" data-key="a"><span><b>A</b>guard</span></div>
+        <div class="key" data-key="s"><span><b>S</b>slip</span></div>
+        <div class="key" data-key="d"><span><b>D</b>clinch</span></div>
+        <div class="key" data-key="f"><span><b>F</b>shove</span></div>
+      </div>
+    </section>
+    <section class="plate matrix">
+      <div class="sectionTitle">Combat matrix</div>
+      <div class="matrixRows">
+        <div class="rule"><b>Strike</b>beats setup</div>
+        <div class="rule"><b>Guard</b>beats strike</div>
+        <div class="rule"><b>Break</b>beats guard</div>
+        <div class="rule"><b>Clinch</b>beats break</div>
+        <div class="rule"><b>Evade</b>beats clinch</div>
+      </div>
+    </section>
+    <section class="plate telemetry">
+      <div class="sectionTitle">Live test log</div>
+      <div id="eventLog" class="eventLog"></div>
+    </section>
+  </div>
+
+  <div id="matchOverlay" class="matchOverlay">
+    <section class="matchCard">
+      <div id="matchEyebrow" class="matchEyebrow">cadence fighter</div>
+      <div id="matchTitle" class="matchTitle">Start</div>
+      <div id="matchSub" class="matchSub">Win two rounds. Read the queue. Break the rhythm.</div>
+      <button id="startButton" class="startButton" type="button">Start Match</button>
+    </section>
+  </div>
+
+  <script>
+    const canvas = document.getElementById("game");
+    const ctx = canvas.getContext("2d");
+    const stageImage = new Image();
+    stageImage.src = "assets/training-room-stage.png";
+    const hud = {
+      pHealth: document.getElementById("pHealth"),
+      eHealth: document.getElementById("eHealth"),
+      pPosture: document.getElementById("pPosture"),
+      ePosture: document.getElementById("ePosture"),
+      pQueue: document.getElementById("pQueue"),
+      eQueue: document.getElementById("eQueue"),
+      pState: document.getElementById("pState"),
+      eState: document.getElementById("eState"),
+      pTempo: document.getElementById("pTempo"),
+      eTempo: document.getElementById("eTempo"),
+      roundInfo: document.getElementById("roundInfo"),
+      scoreRow: document.getElementById("scoreRow"),
+      range: document.getElementById("range"),
+      callout: document.getElementById("callout"),
+      eventLog: document.getElementById("eventLog"),
+      matchOverlay: document.getElementById("matchOverlay"),
+      matchEyebrow: document.getElementById("matchEyebrow"),
+      matchTitle: document.getElementById("matchTitle"),
+      matchSub: document.getElementById("matchSub"),
+      startButton: document.getElementById("startButton")
+    };
+
+    const MOVES = {
+      j: { key: "J", name: "Jab", family: "strike", height: "high", limb: "LH", startup: 145, active: 120, recovery: 210, damage: 6, posture: 8, range: -0.04, priority: 3, commitment: 1, canPreempt: true },
+      k: { key: "K", name: "Cross", family: "strike", height: "mid", limb: "RH", startup: 190, active: 130, recovery: 260, damage: 9, posture: 12, range: -0.08, priority: 4, commitment: 2, canPreempt: true },
+      u: { key: "U", name: "Low kick", family: "break", height: "low", limb: "LL", startup: 210, active: 145, recovery: 280, damage: 7, posture: 15, range: 0.02, priority: 4, commitment: 2, canPreempt: false },
+      i: { key: "I", name: "High kick", family: "strike", height: "high", limb: "RL", startup: 270, active: 165, recovery: 380, damage: 13, posture: 18, range: 0.06, priority: 5, commitment: 3, canPreempt: false },
+      a: { key: "A", name: "Shell", family: "guard", height: "body", limb: "DEF", startup: 80, active: 250, recovery: 160, damage: 0, posture: -8, range: 0.05, priority: 2, commitment: 1, canPreempt: true },
+      s: { key: "S", name: "Slip", family: "evade", height: "angle", limb: "EV", startup: 95, active: 210, recovery: 180, damage: 0, posture: -4, range: 0.09, priority: 3, commitment: 1, canPreempt: true },
+      d: { key: "D", name: "Clinch", family: "clinch", height: "body", limb: "GR", startup: 170, active: 190, recovery: 260, damage: 5, posture: 14, range: -0.18, priority: 5, commitment: 2, canPreempt: true },
+      f: { key: "F", name: "Shove", family: "break", height: "body", limb: "BR", startup: 125, active: 160, recovery: 220, damage: 3, posture: 12, range: 0.22, priority: 4, commitment: 1, canPreempt: true }
+    };
+
+    const beats = {
+      strike: ["setup"],
+      guard: ["strike"],
+      break: ["guard"],
+      clinch: ["break", "evade"],
+      evade: ["clinch", "strike"],
+      setup: ["evade"]
+    };
+
+    const actors = {
+      player: makeActor("player", "#47c7d9", -1),
+      enemy: makeActor("enemy", "#e45745", 1)
+    };
+
+    const game = {
+      last: performance.now(),
+      range: 0.48,
+      rangeName: "entry range",
+      shake: 0,
+      flash: [],
+      callout: "Cadence governs intent",
+      aiClock: 0,
+      aiBaseDelay: 640,
+      started: false,
+      roundLocked: false,
+      lastPlayerIntent: 0,
+      mode: "title",
+      round: 0,
+      maxRounds: 3,
+      winsNeeded: 2,
+      roundTime: 45,
+      roundClock: 45,
+      playerRounds: 0,
+      enemyRounds: 0,
+      banner: { title: "Start", sub: "Win two rounds. Read the queue. Break the rhythm.", visible: true, button: true },
+      assetReady: false,
+      sessionId: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+      events: [],
+      pendingLogs: [],
+      lastRangeName: "entry range"
+    };
+
+    function makeActor(id, color, side) {
+      return {
+        id, color, side,
+        hp: 100,
+        posture: 100,
+        queue: [],
+        current: null,
+        phaseTime: 0,
+        state: "ready",
+        tempo: 0,
+        inputTimes: [],
+        sway: 0,
+        hitPulse: 0,
+        wins: 0
+      };
+    }
+
+    function resize() {
+      const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+      canvas.width = Math.floor(innerWidth * dpr);
+      canvas.height = Math.floor(innerHeight * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+
+    addEventListener("resize", resize);
+    resize();
+
+    stageImage.addEventListener("load", () => {
+      game.assetReady = true;
+      logEvent("asset", { name: "training-room-stage", status: "loaded" });
+    });
+
+    stageImage.addEventListener("error", () => {
+      logEvent("asset", { name: "training-room-stage", status: "error" });
+    });
+
+    addEventListener("keydown", (event) => {
+      const key = event.key.toLowerCase();
+      if (!MOVES[key] || event.repeat) return;
+      event.preventDefault();
+      playerIntent(key);
+    });
+
+    document.querySelector(".keysGrid").addEventListener("pointerdown", (event) => {
+      const key = event.target.closest("[data-key]")?.dataset.key;
+      if (!key || !MOVES[key]) return;
+      event.preventDefault();
+      playerIntent(key);
+    });
+
+    hud.startButton.addEventListener("click", () => {
+      startMatch();
+    });
+
+    function playerIntent(key) {
+      if (game.mode === "title" || game.mode === "matchOver") {
+        startMatch();
+        return;
+      }
+      if (game.mode !== "fight") return;
+      enqueue(actors.player, MOVES[key], performance.now(), true);
+      game.started = true;
+      game.lastPlayerIntent = performance.now();
+    }
+
+    function enqueue(actor, move, now, human) {
+      actor.inputTimes = actor.inputTimes.filter(t => now - t < 900);
+      actor.inputTimes.push(now);
+      actor.tempo = actor.inputTimes.length / 6;
+
+      const intent = {
+        ...move,
+        id: crypto.randomUUID ? crypto.randomUUID() : `${now}-${Math.random()}`,
+        age: 0,
+        preempted: false,
+        tempo: actor.tempo
+      };
+
+      const canSpike = actor.tempo > 0.55 && move.canPreempt;
+      const target = actor.queue.findIndex(item => item.commitment <= move.commitment && item.canPreempt);
+
+      if (canSpike && target >= 0) {
+        const replaced = actor.queue[target];
+        actor.queue[target] = intent;
+        actor.posture = clamp(actor.posture - 4 - move.commitment * 2, 0, 100);
+        actor.state = "preempt";
+        if (human) {
+          game.callout = `${move.name} overwrites ${replaced.name}`;
+          logEvent("preempt", {
+            actor: actor.id,
+            move: move.name,
+            replaced: replaced.name,
+            tempo: actor.tempo,
+            posture: actor.posture
+          });
+        }
+      } else {
+        actor.queue.push(intent);
+        if (human) {
+          logEvent("input", {
+            actor: actor.id,
+            move: move.name,
+            tempo: actor.tempo,
+            queue: actor.queue.map(item => item.key).join("")
+          });
+        }
+      }
+
+      if (actor.queue.length > 6) {
+        actor.queue.splice(6);
+        actor.posture = clamp(actor.posture - 5, 0, 100);
+        logEvent("overflow", { actor: actor.id, posture: actor.posture });
+      }
+    }
+
+    function update(now) {
+      const dt = Math.min(40, now - game.last);
+      game.last = now;
+      repairState();
+
+      updateMatch(dt);
+
+      if (game.started) game.aiClock -= dt;
+      if (game.started && !game.roundLocked && game.aiClock <= 0) {
+        enemyThink(now);
+      }
+
+      tickActor(actors.player, dt);
+      tickActor(actors.enemy, dt);
+      resolveActive();
+      updateRange(dt);
+      regenerate(dt);
+
+      game.shake *= 0.88;
+      for (const f of game.flash) f.life -= dt;
+      game.flash = game.flash.filter(f => f.life > 0);
+
+      draw(now);
+      updateHud();
+      flushLogs();
+      requestAnimationFrame(update);
+    }
+
+    function enemyThink(now) {
+      if (game.mode !== "fight") return;
+
+      const p = actors.player;
+      const e = actors.enemy;
+      const playerIdleMs = now - game.lastPlayerIntent;
+      if (playerIdleMs > 2600 && !p.queue.length && !p.current) {
+        game.aiClock = 420;
+        if (e.queue.length === 0 && !e.current && Math.random() < 0.18) {
+          enqueue(e, MOVES[weighted(["a", "s"], [2, 1])], now, false);
+        }
+        return;
+      }
+
+      const seen = p.queue[0] || p.current;
+      let pick;
+
+      if (!seen) {
+        pick = weighted(["j", "k", "a", "s", "d"], [3, 2, 2, 1, 1]);
+      } else if (seen.family === "strike") {
+        pick = weighted(["a", "s", "d", "u"], [4, 3, 1, 1]);
+      } else if (seen.family === "guard") {
+        pick = weighted(["u", "f", "d"], [3, 3, 1]);
+      } else if (seen.family === "break") {
+        pick = weighted(["d", "j", "k"], [4, 2, 2]);
+      } else if (seen.family === "clinch") {
+        pick = weighted(["s", "f", "i"], [3, 3, 1]);
+      } else {
+        pick = weighted(["j", "k", "d"], [3, 2, 2]);
+      }
+
+      enqueue(e, MOVES[pick], now, false);
+      logEvent("ai", {
+        move: MOVES[pick].name,
+        read: seen ? seen.name : "none",
+        playerTempo: p.tempo
+      });
+      game.aiClock = game.aiBaseDelay - Math.min(240, p.tempo * 190) + Math.random() * 260;
+    }
+
+    function weighted(keys, weights) {
+      let total = weights.reduce((a, b) => a + b, 0);
+      let roll = Math.random() * total;
+      for (let i = 0; i < keys.length; i++) {
+        roll -= weights[i];
+        if (roll <= 0) return keys[i];
+      }
+      return keys[0];
+    }
+
+    function tickActor(actor, dt) {
+      if (game.roundLocked || game.mode !== "fight") {
+        actor.state = actor.hp <= 0 ? "down" : "ready";
+        return;
+      }
+
+      actor.sway += dt * 0.004;
+      actor.hitPulse = Math.max(0, actor.hitPulse - dt);
+
+      for (const item of actor.queue) item.age += dt;
+      actor.queue = actor.queue.filter(item => item.age < 2200);
+
+      if (!actor.current && actor.queue.length) {
+        actor.current = actor.queue.shift();
+        actor.phaseTime = 0;
+        actor.current.resolved = false;
+        actor.state = actor.current.name;
+        logEvent("start", { actor: actor.id, move: actor.current.name, range: game.rangeName });
+      }
+
+      if (!actor.current) {
+        actor.state = actor.posture < 28 ? "rattled" : "ready";
+        return;
+      }
+
+      actor.phaseTime += dt;
+      const total = actor.current.startup + actor.current.active + actor.current.recovery;
+      if (actor.phaseTime >= total) {
+        actor.current = null;
+        actor.phaseTime = 0;
+      }
+    }
+
+    function resolveActive() {
+      if (game.roundLocked || game.mode !== "fight") return;
+
+      const pActive = isLiveThreat(actors.player);
+      const eActive = isLiveThreat(actors.enemy);
+      if (!pActive && !eActive) return;
+
+      if (pActive && eActive) {
+        actors.player.current.resolved = true;
+        actors.enemy.current.resolved = true;
+        const outcome = compare(actors.player.current, actors.enemy.current);
+        if (outcome > 0) resolveWinner(actors.player, actors.enemy, actors.player.current, actors.enemy.current);
+        else if (outcome < 0) resolveWinner(actors.enemy, actors.player, actors.enemy.current, actors.player.current);
+        else clash(actors.player.current, actors.enemy.current);
+        return;
+      }
+
+      if (pActive) resolveSingle(actors.player, actors.enemy);
+      if (eActive) resolveSingle(actors.enemy, actors.player);
+    }
+
+    function isLiveThreat(actor) {
+      return actor.current && !actor.current.resolved && isActive(actor);
+    }
+
+    function resolveSingle(attacker, defender) {
+      const attack = attacker.current;
+      if (attack.family === "guard" || attack.family === "evade") {
+        attack.resolved = true;
+        applyReady(attacker, attack);
+        return;
+      }
+
+      const defense = defender.current && isActive(defender) ? defender.current : null;
+      attack.resolved = true;
+      if (!defense) {
+        applyWin(attacker, defender, attack, OPEN_LINE);
+        return;
+      }
+
+      const outcome = compare(attack, defense);
+      if (outcome >= 0) resolveWinner(attacker, defender, attack, defense);
+      else applyDefense(defender, attacker, defense, attack);
+    }
+
+    function isActive(actor) {
+      const move = actor.current;
+      return actor.phaseTime >= move.startup && actor.phaseTime <= move.startup + move.active;
+    }
+
+    function compare(a, b) {
+      if (beats[a.family]?.includes(b.family)) return 1;
+      if (beats[b.family]?.includes(a.family)) return -1;
+
+      if (a.height === "low" && b.height === "high") return 1;
+      if (b.height === "low" && a.height === "high") return -1;
+
+      const pa = a.priority + a.tempo * 1.4;
+      const pb = b.priority + b.tempo * 1.4;
+      if (Math.abs(pa - pb) < 0.65) return 0;
+      return pa > pb ? 1 : -1;
+    }
+
+    function resolveWinner(winner, loser, winMove, loseMove) {
+      if (winMove.family === "guard" || winMove.family === "evade") {
+        applyDefense(winner, loser, winMove, loseMove);
+      } else {
+        applyWin(winner, loser, winMove, loseMove);
+      }
+    }
+
+    function applyWin(winner, loser, winMove, loseMove) {
+      if (game.roundLocked || winner.hp <= 0 || loser.hp <= 0) return;
+
+      const postureScale = loser.posture < 35 ? 1.45 : 1;
+      const damage = Math.round(((winMove.damage || 0) + (winMove.commitment || 0)) * postureScale);
+      loser.hp = clamp(loser.hp - damage, 0, 100);
+      loser.posture = clamp(loser.posture - (winMove.posture || 0), 0, 100);
+      winner.posture = clamp(winner.posture + 5, 0, 100);
+      winner.wins += 1;
+      winner.hitPulse = 140;
+      loser.hitPulse = 240;
+      game.range = clamp(game.range + (winMove.range || 0), 0.12, 0.92);
+      game.shake = Math.min(14, game.shake + 5 + (winMove.commitment || 0));
+      game.callout = `${winner.id === "player" ? "Operator" : "Mirror"}: ${winMove.name} answers ${loseMove.name}`;
+      game.flash.push({
+        type: "hit",
+        side: loser.side,
+        life: 220,
+        maxLife: 220,
+        color: winner.color,
+        label: winMove.key || "",
+        range: game.range
+      });
+      logEvent("exchange", {
+        winner: winner.id,
+        loser: loser.id,
+        winMove: winMove.name,
+        loseMove: loseMove.name,
+        damage,
+        playerHp: actors.player.hp,
+        enemyHp: actors.enemy.hp,
+        range: game.rangeName
+      });
+
+      if (loser.hp <= 0) resetRound(`${winner.id === "player" ? "Operator" : "Mirror"} controls the exchange`);
+    }
+
+    function applyDefense(defender, attacker, defenseMove, attackMove) {
+      if (game.roundLocked || defender.hp <= 0 || attacker.hp <= 0) return;
+
+      defender.posture = clamp(defender.posture + 8, 0, 100);
+      attacker.posture = clamp(attacker.posture - 9, 0, 100);
+      defenseMove.resolved = true;
+      defender.hitPulse = 110;
+      game.range = clamp(game.range + (defenseMove.range || 0.04), 0.12, 0.92);
+      game.shake = Math.min(8, game.shake + 3);
+      game.callout = `${defender.id === "player" ? "Operator" : "Mirror"} reads ${attackMove.name}`;
+      game.flash.push({
+        type: "defense",
+        side: attacker.side,
+        life: 180,
+        maxLife: 180,
+        color: defenseMove.family === "guard" ? "#f1bd4b" : defender.color,
+        label: defenseMove.family === "guard" ? "GUARD" : "SLIP",
+        range: game.range
+      });
+      logEvent("defense", {
+        defender: defender.id,
+        move: defenseMove.name,
+        denied: attackMove.name,
+        playerHp: actors.player.hp,
+        enemyHp: actors.enemy.hp,
+        range: game.rangeName
+      });
+    }
+
+    function applyReady(actor, move) {
+      actor.posture = clamp(actor.posture + Math.abs(move.posture || 5), 0, 100);
+      game.range = clamp(game.range + (move.range || 0), 0.12, 0.92);
+      game.callout = `${actor.id === "player" ? "Operator" : "Mirror"} sets ${move.name}`;
+      logEvent("ready", {
+        actor: actor.id,
+        move: move.name,
+        posture: actor.posture,
+        range: game.rangeName
+      });
+    }
+
+    function clash(a, b) {
+      actors.player.posture = clamp(actors.player.posture - 7, 0, 100);
+      actors.enemy.posture = clamp(actors.enemy.posture - 7, 0, 100);
+      game.shake = Math.min(10, game.shake + 5);
+      game.callout = `${a.name} and ${b.name} clash`;
+      game.flash.push({ type: "clash", side: 0, life: 190, maxLife: 190, color: "#f1bd4b", label: "CLASH", range: game.range });
+      logEvent("clash", {
+        playerMove: a.name,
+        enemyMove: b.name,
+        playerPosture: actors.player.posture,
+        enemyPosture: actors.enemy.posture
+      });
+    }
+
+    function updateRange(dt) {
+      const pIntent = actors.player.current?.range || 0;
+      const eIntent = actors.enemy.current?.range || 0;
+      const centerPull = (0.5 - game.range) * 0.00022 * dt;
+      game.range = clamp(game.range + centerPull + (pIntent - eIntent) * 0.0012 * dt, 0.12, 0.92);
+
+      if (game.range < 0.22) game.rangeName = "clinch range";
+      else if (game.range < 0.42) game.rangeName = "pocket range";
+      else if (game.range < 0.66) game.rangeName = "entry range";
+      else game.rangeName = "reset range";
+
+      if (game.rangeName !== game.lastRangeName) {
+        game.lastRangeName = game.rangeName;
+        logEvent("range", { range: game.rangeName, value: game.range });
+      }
+    }
+
+    function regenerate(dt) {
+      for (const actor of Object.values(actors)) {
+        const calm = actor.queue.length === 0 && !actor.current;
+        actor.posture = clamp(actor.posture + (calm ? 0.015 : 0.006) * dt, 0, 100);
+        actor.tempo *= Math.pow(0.996, dt / 16);
+      }
+    }
+
+    function resetRound(message) {
+      if (game.roundLocked) return;
+
+      game.roundLocked = true;
+      game.callout = message;
+      logEvent("round", { message });
+      const playerWon = actors.enemy.hp <= 0 && actors.player.hp > 0;
+      const enemyWon = actors.player.hp <= 0 && actors.enemy.hp > 0;
+      const winner = playerWon ? "player" : enemyWon ? "enemy" : decideRoundByVitals();
+      awardRound(winner, message);
+    }
+
+    function startMatch() {
+      game.playerRounds = 0;
+      game.enemyRounds = 0;
+      game.round = 0;
+      game.started = false;
+      game.roundLocked = true;
+      game.mode = "intro";
+      logEvent("match", { state: "start" });
+      prepareNextRound();
+    }
+
+    function prepareNextRound() {
+      game.round += 1;
+      resetActorsForRound();
+      game.mode = "intro";
+      game.roundLocked = true;
+      game.callout = `Round ${game.round}`;
+      setBanner(`Round ${game.round}`, "Get ready", false, "best of three");
+      logEvent("roundIntro", { round: game.round });
+      setTimeout(() => {
+        setBanner("Fight", "Cadence live", false, `round ${game.round}`);
+        game.callout = "Fight";
+        game.mode = "fight";
+        game.started = true;
+        game.roundLocked = false;
+        game.roundClock = game.roundTime;
+        game.aiClock = 650;
+        game.lastPlayerIntent = performance.now();
+        setTimeout(() => {
+          if (game.mode === "fight") hideBanner();
+        }, 650);
+        logEvent("fight", { round: game.round });
+      }, 1200);
+    }
+
+    function resetActorsForRound() {
+      for (const actor of Object.values(actors)) {
+        actor.hp = 100;
+        actor.posture = 100;
+        actor.queue = [];
+        actor.current = null;
+        actor.phaseTime = 0;
+        actor.state = "ready";
+        actor.tempo = 0;
+        actor.inputTimes = [];
+        actor.hitPulse = 0;
+      }
+      game.range = 0.52;
+      game.rangeName = "entry range";
+      game.lastRangeName = "entry range";
+      game.flash = [];
+    }
+
+    function updateMatch(dt) {
+      if (game.mode !== "fight" || game.roundLocked) return;
+
+      game.roundClock = Math.max(0, game.roundClock - dt / 1000);
+      if (game.roundClock <= 0) {
+        game.callout = "Time";
+        awardRound(decideRoundByVitals(), "Time");
+      }
+    }
+
+    function decideRoundByVitals() {
+      const playerScore = actors.player.hp + actors.player.posture * 0.35;
+      const enemyScore = actors.enemy.hp + actors.enemy.posture * 0.35;
+      if (Math.abs(playerScore - enemyScore) < 4) return "draw";
+      return playerScore > enemyScore ? "player" : "enemy";
+    }
+
+    function awardRound(winner, reason) {
+      if (game.mode === "roundOver" || game.mode === "matchOver") return;
+
+      game.mode = "roundOver";
+      game.roundLocked = true;
+      game.started = false;
+      if (winner === "player") game.playerRounds += 1;
+      else if (winner === "enemy") game.enemyRounds += 1;
+
+      const title = winner === "draw" ? "Draw" : winner === "player" ? "KO" : "KO";
+      const sub = winner === "draw"
+        ? "No clean control"
+        : `${winner === "player" ? "Operator" : "Mirror"} takes round ${game.round}`;
+      setBanner(title, sub, false, reason);
+      game.callout = sub;
+      logEvent("roundResult", { round: game.round, winner, playerRounds: game.playerRounds, enemyRounds: game.enemyRounds, reason });
+
+      setTimeout(() => {
+        if (game.playerRounds >= game.winsNeeded || game.enemyRounds >= game.winsNeeded || game.round >= game.maxRounds) {
+          finishMatch();
+        } else {
+          prepareNextRound();
+        }
+      }, 1600);
+    }
+
+    function finishMatch() {
+      game.mode = "matchOver";
+      game.roundLocked = true;
+      game.started = false;
+      const winner = game.playerRounds === game.enemyRounds
+        ? "draw"
+        : game.playerRounds > game.enemyRounds ? "player" : "enemy";
+      const title = winner === "draw" ? "No Contest" : `${winner === "player" ? "Operator" : "Mirror"} Wins`;
+      const sub = winner === "draw" ? "The match goes unresolved" : `${game.playerRounds}-${game.enemyRounds}`;
+      setBanner(title, sub, true, "match complete");
+      game.callout = title;
+      logEvent("match", { state: "complete", winner, playerRounds: game.playerRounds, enemyRounds: game.enemyRounds });
+    }
+
+    function setBanner(title, sub, button, eyebrow = "") {
+      game.banner = { title, sub, visible: true, button, eyebrow };
+    }
+
+    function hideBanner() {
+      game.banner.visible = false;
+    }
+
+    function draw(now) {
+      const w = innerWidth;
+      const h = innerHeight;
+      const sx = (Math.random() - 0.5) * game.shake;
+      const sy = (Math.random() - 0.5) * game.shake;
+
+      ctx.clearRect(0, 0, w, h);
+      ctx.save();
+      ctx.translate(sx, sy);
+
+      drawArena(w, h, now);
+      const spacing = 110 + game.range * Math.min(340, w * 0.34);
+      const baseY = h * 0.68;
+      drawFighter(actors.player, w * 0.5 - spacing * 0.42, baseY + 14, 1.03, true);
+      drawFighter(actors.enemy, w * 0.5 + spacing * 0.50, baseY - 14, 0.91, false);
+      drawEffects(w, h);
+      ctx.restore();
+    }
+
+    function drawArena(w, h, now) {
+      const horizon = h * 0.42;
+      const floorTop = h * 0.46;
+      if (game.assetReady) {
+        drawCoverImage(stageImage, 0, 0, w, h);
+        ctx.fillStyle = "rgba(2, 5, 6, 0.22)";
+        ctx.fillRect(0, 0, w, h);
+      } else {
+        const grd = ctx.createLinearGradient(0, 0, 0, h);
+        grd.addColorStop(0, "#10191d");
+        grd.addColorStop(0.46, "#172023");
+        grd.addColorStop(1, "#070a0c");
+        ctx.fillStyle = grd;
+        ctx.fillRect(0, 0, w, h);
+      }
+
+      ctx.strokeStyle = game.assetReady ? "rgba(244,239,228,0.08)" : "rgba(244,239,228,0.12)";
+      ctx.lineWidth = 1;
+      for (let i = -8; i <= 8; i++) {
+        const x = w / 2 + i * 64;
+        ctx.beginPath();
+        ctx.moveTo(w / 2 + i * 16, horizon);
+        ctx.lineTo(x, h);
+        ctx.stroke();
+      }
+
+      for (let i = 0; i < 9; i++) {
+        const y = floorTop + Math.pow(i / 8, 1.7) * (h - floorTop);
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(w, y);
+        ctx.stroke();
+      }
+
+      ctx.fillStyle = "rgba(71,199,217,0.08)";
+      ctx.beginPath();
+      ctx.ellipse(w * 0.42, h * 0.71, 230 + Math.sin(now * 0.002) * 8, 42, -0.08, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = "rgba(228,87,69,0.08)";
+      ctx.beginPath();
+      ctx.ellipse(w * 0.58, h * 0.69, 220 + Math.cos(now * 0.002) * 8, 39, 0.08, 0, Math.PI * 2);
+      ctx.fill();
+
+      const vignette = ctx.createRadialGradient(w * 0.5, h * 0.50, h * 0.12, w * 0.5, h * 0.52, h * 0.78);
+      vignette.addColorStop(0, "rgba(0,0,0,0)");
+      vignette.addColorStop(0.72, "rgba(0,0,0,0.18)");
+      vignette.addColorStop(1, "rgba(0,0,0,0.62)");
+      ctx.fillStyle = vignette;
+      ctx.fillRect(0, 0, w, h);
+
+      const keyLight = ctx.createLinearGradient(0, 0, w, h);
+      keyLight.addColorStop(0, "rgba(71,199,217,0.10)");
+      keyLight.addColorStop(0.55, "rgba(0,0,0,0)");
+      keyLight.addColorStop(1, "rgba(228,87,69,0.10)");
+      ctx.fillStyle = keyLight;
+      ctx.fillRect(0, 0, w, h);
+    }
+
+    function drawFighter(actor, x, y, scale, behind) {
+      const move = actor.current;
+      const t = move ? actor.phaseTime / (move.startup + move.active + move.recovery) : 0;
+      const pulse = actor.hitPulse / 240;
+      const lean = move ? phaseLean(move, t) * actor.side : Math.sin(actor.sway) * 2;
+      const bob = Math.sin(actor.sway * 1.7) * 3;
+      const alpha = behind ? 1 : 0.9;
+      const pose = limbPose(actor.side, move, t);
+
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.scale(scale, scale);
+      ctx.globalAlpha = alpha;
+
+      ctx.fillStyle = "rgba(0,0,0,0.58)";
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 46, 12, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.translate(lean, bob);
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+
+      drawHumanSilhouette(actor, pose, pulse);
+
+      if (move) {
+        ctx.fillStyle = "rgba(244,239,228,0.88)";
+        ctx.font = "700 11px ui-sans-serif, system-ui";
+        ctx.textAlign = "center";
+        ctx.fillText(move.key, 0, -188);
+      }
+
+      ctx.restore();
+    }
+
+    function drawHumanSilhouette(actor, pose, pulse) {
+      const facing = -actor.side;
+      const suit = actor.id === "player" ? "#142229" : "#281617";
+      const trim = pulse > 0 ? "#ffffff" : actor.color;
+      const dark = "#030506";
+      const skin = actor.id === "player" ? "#d4a27a" : "#c58d68";
+
+      ctx.strokeStyle = dark;
+      ctx.lineWidth = 18;
+      bodySkeleton(pose);
+
+      ctx.strokeStyle = suit;
+      ctx.lineWidth = 12;
+      bodySkeleton(pose);
+
+      ctx.strokeStyle = trim;
+      ctx.lineWidth = 4;
+      ctx.globalAlpha *= 0.68;
+      bodySkeleton(pose);
+      ctx.globalAlpha = 1;
+
+      ctx.fillStyle = dark;
+      roundedPoly([
+        [-24, -132], [24, -130], [18, -86], [13, -64],
+        [-12, -64], [-18, -86]
+      ], 8);
+      ctx.fill();
+
+      const torso = ctx.createLinearGradient(-28, -130, 26, -64);
+      torso.addColorStop(0, lighten(actor.color, 0.24));
+      torso.addColorStop(0.24, suit);
+      torso.addColorStop(1, "#06090a");
+      ctx.fillStyle = torso;
+      roundedPoly([
+        [-20, -128], [20, -127], [15, -86], [10, -68],
+        [-9, -68], [-15, -86]
+      ], 7);
+      ctx.fill();
+
+      ctx.fillStyle = "rgba(255,255,255,0.10)";
+      roundedPoly([[-9, -122], [3, -120], [2, -72], [-8, -72]], 5);
+      ctx.fill();
+
+      ctx.strokeStyle = "rgba(255,255,255,0.16)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(-12, -122);
+      ctx.lineTo(0, -103);
+      ctx.lineTo(12, -122);
+      ctx.stroke();
+
+      ctx.strokeStyle = dark;
+      ctx.lineWidth = 8;
+      ctx.beginPath();
+      ctx.moveTo(-17, -127);
+      ctx.lineTo(-32, -113);
+      ctx.moveTo(18, -126);
+      ctx.lineTo(33, -112);
+      ctx.stroke();
+
+      ctx.fillStyle = "rgba(4,7,8,0.88)";
+      roundedPoly([[-14, -70], [13, -70], [18, -58], [-18, -58]], 5);
+      ctx.fill();
+
+      ctx.fillStyle = dark;
+      ctx.beginPath();
+      ctx.ellipse(0, -153, 16, 20, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      const head = ctx.createLinearGradient(-14, -169, 14, -130);
+      head.addColorStop(0, "#f2c09c");
+      head.addColorStop(1, skin);
+      ctx.fillStyle = pulse > 0 ? "#ffffff" : head;
+      ctx.beginPath();
+      ctx.ellipse(0, -153, 12, 16, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = "rgba(0,0,0,0.55)";
+      ctx.beginPath();
+      ctx.ellipse(0, -165, 11, 5, 0, Math.PI, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = "rgba(255,255,255,0.75)";
+      ctx.beginPath();
+      ctx.arc(actor.side * -4, -155, 2, 0, Math.PI * 2);
+      ctx.fill();
+
+      drawGlove(pose.lh, trim);
+      drawGlove(pose.rh, trim);
+      drawShoe(pose.ll, trim);
+      drawShoe(pose.rl, trim);
+
+      function bodySkeleton(p) {
+        arm(-24, -116, p.lh.x, p.lh.y, -1);
+        arm(24, -114, p.rh.x, p.rh.y, 1);
+        leg(-11, -62, p.ll.x, p.ll.y, -1);
+        leg(12, -62, p.rl.x, p.rl.y, 1);
+      }
+
+      function arm(x1, y1, x2, y2, side) {
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        const elbowX = (x1 + x2) * 0.5 + side * 11 + facing * 7;
+        const elbowY = (y1 + y2) * 0.5 + 12;
+        ctx.lineTo(elbowX, elbowY);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+      }
+
+      function leg(x1, y1, x2, y2, side) {
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        const kneeX = (x1 + x2) * 0.5 + side * 10;
+        const kneeY = (y1 + y2) * 0.5 - 2;
+        ctx.lineTo(kneeX, kneeY);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+      }
+
+      function drawGlove(point, color) {
+        ctx.fillStyle = dark;
+        ctx.beginPath();
+        ctx.ellipse(point.x, point.y, 11, 9, facing * 0.18, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.ellipse(point.x, point.y, 7.2, 5.6, facing * 0.18, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      function drawShoe(point, color) {
+        ctx.save();
+        ctx.translate(point.x, point.y);
+        ctx.rotate(facing * 0.12);
+        ctx.fillStyle = dark;
+        ctx.beginPath();
+        ctx.roundRect(-18, -6, 31, 12, 6);
+        ctx.fill();
+        ctx.fillStyle = color;
+        ctx.globalAlpha = 0.86;
+        ctx.beginPath();
+        ctx.roundRect(-12, -4, 20, 6, 4);
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+
+    function roundedPoly(points) {
+      ctx.beginPath();
+      ctx.moveTo(points[0][0], points[0][1]);
+      for (let i = 1; i < points.length; i++) ctx.lineTo(points[i][0], points[i][1]);
+      ctx.closePath();
+    }
+
+    function lighten(hex, amount) {
+      const value = parseInt(hex.slice(1), 16);
+      const r = Math.min(255, ((value >> 16) & 255) + Math.round(255 * amount));
+      const g = Math.min(255, ((value >> 8) & 255) + Math.round(255 * amount));
+      const b = Math.min(255, (value & 255) + Math.round(255 * amount));
+      return `rgb(${r}, ${g}, ${b})`;
+    }
+
+    function limbPose(side, move, t) {
+      const s = -side;
+      const snap = move ? Math.sin(Math.min(1, t) * Math.PI) : 0;
+      const recoil = move ? Math.sin(Math.min(1, t) * Math.PI * 2) * 0.5 : 0;
+      const base = {
+        lh: { x: s * 34, y: -111 + recoil * 3 },
+        rh: { x: -s * 24, y: -106 - recoil * 2 },
+        ll: { x: -38, y: -2 },
+        rl: { x: 42, y: -1 }
+      };
+      if (!move) return base;
+      if (move.limb === "LH") base.lh = { x: s * (34 + 86 * snap), y: -111 - 8 * snap };
+      if (move.limb === "RH") base.rh = { x: s * (12 + 104 * snap), y: -106 - 5 * snap };
+      if (move.limb === "LL") base.ll = { x: s * (42 + 76 * snap), y: -8 - 14 * snap };
+      if (move.limb === "RL") base.rl = { x: s * (40 + 96 * snap), y: -3 - 55 * snap };
+      if (move.limb === "DEF") {
+        base.lh = { x: s * 18, y: -123 };
+        base.rh = { x: -s * 8, y: -120 };
+      }
+      if (move.limb === "EV") {
+        base.lh.x -= s * 26 * snap;
+        base.rh.x -= s * 18 * snap;
+      }
+      if (move.limb === "GR") {
+        base.lh = { x: s * (36 + 48 * snap), y: -108 + 8 * snap };
+        base.rh = { x: s * (22 + 54 * snap), y: -95 + 12 * snap };
+      }
+      if (move.limb === "BR") {
+        base.lh = { x: s * (30 + 62 * snap), y: -105 };
+        base.rh = { x: s * (22 + 64 * snap), y: -92 };
+      }
+      return base;
+    }
+
+    function phaseLean(move, t) {
+      const attack = Math.sin(Math.min(1, t) * Math.PI);
+      if (move.family === "guard") return -5 * attack;
+      if (move.family === "evade") return -16 * attack;
+      if (move.family === "clinch") return 14 * attack;
+      if (move.family === "break") return 8 * attack;
+      return 10 * attack;
+    }
+
+    function line(x1, y1, x2, y2) {
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+    }
+
+    function drawEffects(w, h) {
+      for (const f of game.flash) {
+        const alpha = f.life / (f.maxLife || 180);
+        const x = w * 0.5 + f.side * (82 + (f.range || 0.5) * 95);
+        const y = h * 0.54 - (1 - alpha) * 18;
+        ctx.globalAlpha = alpha;
+        ctx.strokeStyle = f.color;
+        ctx.lineWidth = f.type === "hit" ? 5 : 3;
+        ctx.beginPath();
+        ctx.arc(x, y, 24 + (1 - alpha) * 74, 0, Math.PI * 2);
+        ctx.stroke();
+        if (f.type === "hit") {
+          ctx.beginPath();
+          ctx.moveTo(x - 28 * f.side, y - 8);
+          ctx.lineTo(x + 36 * f.side, y - 20);
+          ctx.moveTo(x - 18 * f.side, y + 10);
+          ctx.lineTo(x + 30 * f.side, y + 24);
+          ctx.stroke();
+        }
+        if (f.label) {
+          ctx.fillStyle = f.color;
+          ctx.font = "800 12px ui-sans-serif, system-ui";
+          ctx.textAlign = "center";
+          ctx.fillText(f.label, x, y - 42 - (1 - alpha) * 22);
+        }
+        ctx.globalAlpha = 1;
+      }
+    }
+
+    function drawCoverImage(image, x, y, w, h) {
+      const scale = Math.max(w / image.width, h / image.height);
+      const sw = w / scale;
+      const sh = h / scale;
+      const sx = (image.width - sw) * 0.5;
+      const sy = (image.height - sh) * 0.5;
+      ctx.drawImage(image, sx, sy, sw, sh, x, y, w, h);
+    }
+
+    function updateHud() {
+      hud.pHealth.style.transform = `scaleX(${actors.player.hp / 100})`;
+      hud.eHealth.style.transform = `scaleX(${actors.enemy.hp / 100})`;
+      hud.pPosture.style.transform = `scaleX(${actors.player.posture / 100})`;
+      hud.ePosture.style.transform = `scaleX(${actors.enemy.posture / 100})`;
+      hud.pState.textContent = actors.player.state;
+      hud.eState.textContent = actors.enemy.state;
+      hud.pTempo.textContent = actors.player.tempo.toFixed(2);
+      hud.eTempo.textContent = actors.enemy.tempo.toFixed(2);
+      hud.roundInfo.textContent = game.mode === "title" ? "-" : `${game.round || 1} / ${Math.ceil(game.roundClock)}`;
+      hud.range.textContent = game.rangeName;
+      hud.callout.textContent = game.callout;
+      renderQueue(hud.pQueue, actors.player);
+      renderQueue(hud.eQueue, actors.enemy);
+      renderScore();
+      renderBanner();
+      renderEvents();
+    }
+
+    function renderScore() {
+      hud.scoreRow.innerHTML = "";
+      for (let i = 0; i < game.winsNeeded; i++) {
+        const p = document.createElement("span");
+        p.className = "pip player" + (i < game.playerRounds ? " on" : "");
+        hud.scoreRow.appendChild(p);
+      }
+      for (let i = 0; i < game.winsNeeded; i++) {
+        const e = document.createElement("span");
+        e.className = "pip enemy" + (i < game.enemyRounds ? " on" : "");
+        hud.scoreRow.appendChild(e);
+      }
+    }
+
+    function renderBanner() {
+      hud.matchOverlay.classList.toggle("hidden", !game.banner.visible);
+      hud.matchEyebrow.textContent = game.banner.eyebrow || "cadence fighter";
+      hud.matchTitle.textContent = game.banner.title;
+      hud.matchSub.textContent = game.banner.sub;
+      hud.startButton.hidden = !game.banner.button;
+      hud.startButton.textContent = game.mode === "matchOver" ? "Run It Back" : "Start Match";
+    }
+
+    function renderQueue(node, actor) {
+      node.innerHTML = "";
+      const live = actor.current;
+      const items = [live, ...actor.queue].slice(0, 6);
+      for (let i = 0; i < 6; i++) {
+        const div = document.createElement("div");
+        div.className = "slot" + (i === 0 && live ? " live" : "");
+        div.textContent = items[i] ? items[i].key : "-";
+        node.appendChild(div);
+      }
+    }
+
+    function clamp(value, min, max) {
+      if (!Number.isFinite(value)) return min;
+      return Math.max(min, Math.min(max, value));
+    }
+
+    const OPEN_LINE = {
+      name: "open line",
+      family: "setup",
+      height: "body",
+      damage: 0,
+      posture: 0,
+      range: 0,
+      priority: 1,
+      commitment: 0,
+      tempo: 0
+    };
+
+    function repairState() {
+      for (const actor of Object.values(actors)) {
+        if (!Number.isFinite(actor.hp)) actor.hp = 100;
+        if (!Number.isFinite(actor.posture)) actor.posture = 100;
+        if (!Number.isFinite(actor.tempo)) actor.tempo = 0;
+      }
+      if (!Number.isFinite(game.range)) {
+        game.range = 0.52;
+        game.rangeName = "entry range";
+        game.callout = "State repaired";
+        logEvent("repair", { reason: "range became non-finite" });
+      }
+    }
+
+    function logEvent(type, detail = {}) {
+      const event = {
+        sessionId: game.sessionId,
+        t: Math.round(performance.now()),
+        type,
+        detail
+      };
+      game.events.unshift(event);
+      game.events = game.events.slice(0, 8);
+      game.pendingLogs.push(event);
+      console.log("[cadence]", event);
+    }
+
+    function renderEvents() {
+      hud.eventLog.innerHTML = "";
+      for (const event of game.events) {
+        const div = document.createElement("div");
+        div.className = "eventLine";
+        div.innerHTML = `<b>${event.type}</b> ${summarizeEvent(event)}`;
+        hud.eventLog.appendChild(div);
+      }
+    }
+
+    function summarizeEvent(event) {
+      const d = event.detail;
+      if (event.type === "exchange") return `${d.winner} ${d.winMove} > ${d.loseMove} dmg ${d.damage}`;
+      if (event.type === "defense") return `${d.defender} ${d.move} denies ${d.denied}`;
+      if (event.type === "ready") return `${d.actor} ${d.move}`;
+      if (event.type === "input") return `${d.move} tempo ${d.tempo.toFixed(2)} queue ${d.queue}`;
+      if (event.type === "preempt") return `${d.move} over ${d.replaced} tempo ${d.tempo.toFixed(2)}`;
+      if (event.type === "ai") return `${d.move} reading ${d.read}`;
+      if (event.type === "start") return `${d.actor} ${d.move} at ${d.range}`;
+      if (event.type === "range") return d.range;
+      if (event.type === "clash") return `${d.playerMove} x ${d.enemyMove}`;
+      return JSON.stringify(d);
+    }
+
+    function flushLogs() {
+      if (!game.pendingLogs.length || location.protocol === "file:") return;
+      const batch = game.pendingLogs.splice(0, game.pendingLogs.length);
+      fetch("/log", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(batch),
+        keepalive: true
+      }).catch(() => {
+        game.pendingLogs.unshift(...batch.slice(-20));
+      });
+    }
+
+    if (new URLSearchParams(location.search).get("autostart") === "1") {
+      setTimeout(startMatch, 120);
+    }
+
+    logEvent("session", { href: location.href });
+    updateHud();
+    requestAnimationFrame(update);
+  </script>
+</body>
+</html>
