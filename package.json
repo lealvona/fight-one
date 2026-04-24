@@ -1,0 +1,9 @@
+{
+  "name": "cadence-fighter-poc",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Original cadence-driven browser fighting game prototype.",
+  "scripts": {
+    "start": "node server.js"
+  }
+}
