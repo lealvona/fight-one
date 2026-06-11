@@ -53,7 +53,10 @@ const server = createServer(async (req, res) => {
 
   try {
     const data = await readFile(filePath);
-    res.writeHead(200, { "Content-Type": mime[extname(filePath)] || "application/octet-stream" });
+    res.writeHead(200, {
+      "Content-Type": mime[extname(filePath)] || "application/octet-stream",
+      "Cache-Control": "no-store"
+    });
     if (req.method === "HEAD") res.end();
     else res.end(data);
   } catch {
