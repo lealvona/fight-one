@@ -16,7 +16,8 @@ screenshots, and play links.
 
 | Version | Play at | What it is |
 | --- | --- | --- |
-| **v3 - Ironflow Apex** (latest) | `/versions/v3-apex/` | Real-discipline movesets with cinema supers, 8 fighters, 3 stages, 4 modes |
+| **v4 - Ironflow Impact** (latest) | `/versions/v4-impact/` | Paired two-body move choreography, over-shoulder camera, humanoid rigs v2, create-a-fighter |
+| **v3 - Ironflow Apex** | `/versions/v3-apex/` | Real-discipline movesets with cinema supers, 8 fighters, 3 stages, 4 modes |
 | **v2 - Ironflow** | `/versions/v2-ironflow/` | The 3D leap: 6 fighters, flow meter, signature arts |
 | **v1 - Cadence Fighter** | `/versions/v1-cadence/` | The original 2D intent-queue proof of concept |
 
@@ -28,6 +29,43 @@ skips the select screen (`p`/`e` fighter ids, `stage` crucible/helipad/shrine,
 The whole thing is static files + one tiny server (telemetry only), so it can be
 hosted anywhere static - e.g. enable GitHub Pages on this repo (Settings → Pages →
 deploy from branch, root) and the hub works as-is; telemetry simply no-ops.
+
+## v4 - Ironflow Impact
+
+**The moves are performed, not implied.** When a big move connects, combat
+holds its breath and both bodies play it out in contact - a paired timeline
+with an executor track and a recipient track:
+
+- **Body slam** (clinch takedown): walk-in, double underhooks, full lift, slam.
+- **Redirect throw**: catch the committed attack, pivot, feed them past you to the floor.
+- **Launchers** (flow-state supers): the hit carries them off their feet in an arc.
+- **Krav burst, signature arts, clean KO collapses** - all choreographed two-body.
+
+**Cadence retention** - the special rule: when you're slammed, queued intents
+that make no sense on the floor are lost. But a queued **clinch survives as a
+kept grip**: if the attacker stands over you, you scissor their legs and
+reverse from the floor (they go down, you get up). A slip queued at slam time
+is simply gone - you can't slip the ground.
+
+**Camera**: the classic horizontal third-person view stays the default (and is
+locked in for two-player). In solo modes, press **C** (or the HUD chip) to
+toggle the **over-the-shoulder chase camera** - the SF4-3DS special - smoothly
+blended, remembered between sessions.
+
+**Humanoid rigs v2**: faces (eyes, brows, nose, mouth, per-character
+expression), articulated hands with thumbs, heel-toe feet, tapered limbs with
+joint balls, trapezius/deltoid/calf masses, real proportions. Still 100%
+procedural - no model files, no exploded poly counts.
+
+**The Forge** (create-a-fighter): name, epithet, body sliders, six skin tones,
+hair, five outfit families with full color control, extras (headband, scarf,
+wraps, armbands...), a 13-point stat budget, and a discipline template that
+carries a real moveset, supers, signature and AI persona. Live 3D preview;
+saved to localStorage; your fighter appears on the select grid and works in
+every mode including the gauntlet.
+
+**Pacing**: globally slower and heavier (PACE 1.32) with hit-stop on contact -
+deliberate exchanges that land and follow through, not percussive flicking.
 
 ## v3 - Ironflow Apex
 
