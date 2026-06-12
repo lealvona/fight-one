@@ -16,7 +16,8 @@ screenshots, and play links.
 
 | Version | Play at | What it is |
 | --- | --- | --- |
-| **v4 - Ironflow Impact** (latest) | `/versions/v4-impact/` | Paired two-body move choreography, over-shoulder camera, humanoid rigs v2, create-a-fighter |
+| **v5 - Ironflow Vérité** (latest) | `/versions/v5-verite/` | The realism cut: image-based lighting, discipline-true biomechanics, contact that lands, phrased rhythm |
+| **v4 - Ironflow Impact** | `/versions/v4-impact/` | Paired two-body move choreography, over-shoulder camera, humanoid rigs v2, create-a-fighter |
 | **v3 - Ironflow Apex** | `/versions/v3-apex/` | Real-discipline movesets with cinema supers, 8 fighters, 3 stages, 4 modes |
 | **v2 - Ironflow** | `/versions/v2-ironflow/` | The 3D leap: 6 fighters, flow meter, signature arts |
 | **v1 - Cadence Fighter** | `/versions/v1-cadence/` | The original 2D intent-queue proof of concept |
@@ -29,6 +30,29 @@ skips the select screen (`p`/`e` fighter ids, `stage` crucible/helipad/shrine,
 The whole thing is static files + one tiny server (telemetry only), so it can be
 hosted anywhere static - e.g. enable GitHub Pages on this repo (Settings → Pages →
 deploy from branch, root) and the hub works as-is; telemetry simply no-ops.
+
+## v5 - Ironflow Vérité
+
+The realism cut. Four fronts, one version:
+
+- **Photorealism**: a procedurally baked environment map gives every PBR
+  material image-based lighting - sweat sheen on skin, glints on plate armor,
+  a rain-slick helipad, lacquered shrine stone. Per-theme light temperatures,
+  2048px shadows, and a generated film-grain + vignette finish.
+- **Martial accuracy**: strikes now have follow-through phases, and signature
+  techniques use their real biomechanics - Thai roundhouses turn the hip fully
+  over with the support foot pivoting, Marisol's meia-lua de compasso spins the
+  whole body through the kick, Daichi's gyaku-zuki pulls hikite to the hip,
+  Bastion's hammerfist arcs down through the target, the teep rides the
+  centerline. Marisol's idle is a true ginga that never stops moving.
+- **Feeling of contact**: ordinary hits visually close the last gap
+  (lunge-to-contact) and detonate a small hot flash at the exact contact
+  point; heavy beats kick the camera in, slams kick dust off the floor, and
+  hit-stop bites harder.
+- **Rhythm and cadence**: the AI fights in human phrases - two or three
+  committed beats, then a breath, with temperament deciding how often it
+  commits. Your own rhythm is rewarded mechanically (high tempo speeds your
+  startups) and visualized (portraits glow with your cadence).
 
 ## v4 - Ironflow Impact
 
@@ -137,7 +161,8 @@ names - and their super names while you're flowing.
 - `versions/v1-cadence/` - frozen v1 (single-file 2D canvas game).
 - `versions/v2-ironflow/` - frozen v2 (first 3D version).
 - `versions/v3-apex/` - frozen v3 (real techniques + cinema supers).
-- `versions/v4-impact/` - current: `src/{data,combat,ai,rig,stage,hud,audio,sequences,creator,main}.js`.
+- `versions/v4-impact/` - frozen v4 (performed moves, OTS camera, the Forge).
+- `versions/v5-verite/` - current: `src/{data,combat,ai,rig,stage,hud,audio,sequences,creator,main}.js`.
 - `vendor/three.module.min.js` - Three.js r160 (MIT, license alongside), shared by all versions.
 - `assets/training-room-stage.png` - original arena plate (v1 backdrop, select screens, Crucible matte).
 - `assets/shots/` - archive screenshots used by the hub.
