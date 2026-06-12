@@ -136,7 +136,8 @@ names - and their super names while you're flowing.
 - `index.html` - the archive hub (all versions, screenshots, play links).
 - `versions/v1-cadence/` - frozen v1 (single-file 2D canvas game).
 - `versions/v2-ironflow/` - frozen v2 (first 3D version).
-- `versions/v3-apex/` - current: `src/{data,combat,ai,rig,stage,hud,audio,main}.js`.
+- `versions/v3-apex/` - frozen v3 (real techniques + cinema supers).
+- `versions/v4-impact/` - current: `src/{data,combat,ai,rig,stage,hud,audio,sequences,creator,main}.js`.
 - `vendor/three.module.min.js` - Three.js r160 (MIT, license alongside), shared by all versions.
 - `assets/training-room-stage.png` - original arena plate (v1 backdrop, select screens, Crucible matte).
 - `assets/shots/` - archive screenshots used by the hub.
