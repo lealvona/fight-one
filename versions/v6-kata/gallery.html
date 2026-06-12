@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Ironflow Kata - Forms Gallery</title>
+  <style>
+    body { margin: 0; background: #14181c; overflow: hidden; font-family: ui-sans-serif, system-ui; }
+    .tag { position: fixed; top: 10px; left: 12px; color: #f4efe4; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; opacity: 0.7; }
+    .sub { position: fixed; top: 28px; left: 12px; color: #aeb6bb; font-size: 11px; opacity: 0.7; }
+  </style>
+</head>
+<body>
+  <div class="tag">ironflow kata - forms gallery</div>
+  <div class="sub">each fighter runs their full technique set on a loop - the kata is the spec</div>
+  <canvas id="game"></canvas>
+  <script type="module">
+    import * as THREE from "../../vendor/three.module.min.js";
+    import { ROSTER, resolveMove } from "./src/data.js";
+    import { createRig } from "./src/rig.js";
+
+    const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById("game"), antialias: true });
+    renderer.setSize(innerWidth, innerHeight);
+    renderer.setPixelRatio(Math.min(2, devicePixelRatio || 1));
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x14181c);
+    scene.add(new THREE.AmbientLight(0xffffff, 1.35));
+    const sun = new THREE.DirectionalLight(0xffffff, 2.2);
+    sun.position.set(2, 6, 8);
+    scene.add(sun);
+
+    const floor = new THREE.Mesh(
+      new THREE.PlaneGeometry(34, 10),
+      new THREE.MeshStandardMaterial({ color: 0x23282d, roughness: 0.9 })
+    );
+    floor.rotation.x = -Math.PI / 2;
+    scene.add(floor);
+
+    const camera = new THREE.PerspectiveCamera(35, innerWidth / innerHeight, 0.1, 60);
+    camera.position.set(0, 1.45, 11.4);
+    camera.lookAt(0, 1.05, 0);
+
+    // The kata sequence each fighter demonstrates, on a loop.
+    const FORM = ["j", "k", "u", "i", "a", "s", "d", "f"];
+    const REST_MS = 700;
+
+    const performers = ROSTER.map((char, i) => {
+      const rig = createRig(char, i % 2 === 0 ? -1 : 1);
+      const pivot = new THREE.Group();
+      pivot.position.x = (i - (ROSTER.length - 1) / 2) * 1.5;
+      pivot.rotation.y = -Math.PI / 2 + 0.32;
+      pivot.add(rig.group);
+      scene.add(pivot);
+      return {
+        rig,
+        formIndex: Math.floor(Math.random() * FORM.length),
+        actor: {
+          current: null, queue: [], phaseTime: 0, downTime: 0, staggerTime: 0,
+          koed: false, hitPulse: 0, flowState: false, posture: 100, postureMax: 100,
+          sway: i * 1.7
+        },
+        rest: 300 + i * 260 // stagger starts so the line reads as a class, not clones
+      };
+    });
+
+    let last = performance.now();
+    function frame(now) {
+      const dt = Math.min(40, now - last);
+      last = now;
+
+      for (const p of performers) {
+        const a = p.actor;
+        if (a.current) {
+          a.phaseTime += dt;
+          const total = a.current.startup + a.current.active + a.current.recovery;
+          if (a.phaseTime >= total) {
+            a.current = null;
+            a.phaseTime = 0;
+            p.rest = REST_MS;
+          }
+        } else {
+          p.rest -= dt;
+          if (p.rest <= 0) {
+            const key = FORM[p.formIndex % FORM.length];
+            p.formIndex++;
+            a.current = resolveMove(p.rig.char, key, false);
+            a.phaseTime = 0;
+          }
+        }
+        p.rig.update(dt, {
+          actor: a, game: { mode: "fight", slowMo: 0, shake: 0 }, t: now,
+          targetX: p.rig.group.position.x, faceSign: 1
+        });
+      }
+      renderer.render(scene, camera);
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+
+    addEventListener("resize", () => {
+      renderer.setSize(innerWidth, innerHeight);
+      camera.aspect = innerWidth / innerHeight;
+      camera.updateProjectionMatrix();
+    });
+  </script>
+</body>
+</html>

@@ -16,7 +16,8 @@ screenshots, and play links.
 
 | Version | Play at | What it is |
 | --- | --- | --- |
-| **v5 - Ironflow Vérité** (latest) | `/versions/v5-verite/` | The realism cut: image-based lighting, discipline-true biomechanics, contact that lands, phrased rhythm |
+| **v6 - Ironflow Kata** (latest) | `/versions/v6-kata/` | Skinned organic bodies, exact technique execution and reception, reach-solved contact |
+| **v5 - Ironflow Vérité** | `/versions/v5-verite/` | The realism cut: image-based lighting, discipline-true biomechanics, contact that lands, phrased rhythm |
 | **v4 - Ironflow Impact** | `/versions/v4-impact/` | Paired two-body move choreography, over-shoulder camera, humanoid rigs v2, create-a-fighter |
 | **v3 - Ironflow Apex** | `/versions/v3-apex/` | Real-discipline movesets with cinema supers, 8 fighters, 3 stages, 4 modes |
 | **v2 - Ironflow** | `/versions/v2-ironflow/` | The 3D leap: 6 fighters, flow meter, signature arts |
@@ -30,6 +31,32 @@ skips the select screen (`p`/`e` fighter ids, `stage` crucible/helipad/shrine,
 The whole thing is static files + one tiny server (telemetry only), so it can be
 hosted anywhere static - e.g. enable GitHub Pages on this repo (Settings → Pages →
 deploy from branch, root) and the hub works as-is; telemetry simply no-ops.
+
+## v6 - Ironflow Kata
+
+**The form is the truth.**
+
+- **Organic bodies**: each fighter is one continuous SkinnedMesh - the trunk
+  and limbs are lofted cross-section sweeps (NURBS-like profiles with muscle
+  masses) deformed by a real bone skeleton. No segment seams, no balloon
+  joints. Skin carries procedural anatomy shading (pectoral arcs, abdominal
+  wall, spinal groove, joint creases); cloth carries a woven texture with
+  slubs on heavy cotton.
+- **Exact execution**: wrists and ankles are now articulated - the fist
+  corkscrews over on a cross, hikite racks to the hip, toes point through a
+  roundhouse, the teep pushes through the ball of the foot, the rear heel
+  pivots on a straight. Every technique has chamber, extension, and
+  follow-through authored against how the disciplines actually teach it.
+- **Exact reception**: being hit has forms too. A jab snaps the head straight
+  back; a hook whips it sideways; a body kick folds the trunk; a low kick
+  buckles the struck leg; a teep shoves the whole frame; an elbow cuts a
+  flinch. The recipient deforms on the impact frame itself and keeps creeping
+  through hit-stop - no mannequin moment.
+- **No air gap**: a reach solver measures the attacker's striking limb and the
+  defender's body width, then closes the distance so the technique's endpoint
+  arrives exactly at the target surface. Clinch range is chest-to-chest.
+- **Forms gallery**: `gallery.html` now runs every fighter through their full
+  technique set on a loop - the kata is the visual spec.
 
 ## v5 - Ironflow Vérité
 
@@ -162,7 +189,8 @@ names - and their super names while you're flowing.
 - `versions/v2-ironflow/` - frozen v2 (first 3D version).
 - `versions/v3-apex/` - frozen v3 (real techniques + cinema supers).
 - `versions/v4-impact/` - frozen v4 (performed moves, OTS camera, the Forge).
-- `versions/v5-verite/` - current: `src/{data,combat,ai,rig,stage,hud,audio,sequences,creator,main}.js`.
+- `versions/v5-verite/` - frozen v5 (the realism cut).
+- `versions/v6-kata/` - current: `src/{data,combat,ai,rig,stage,hud,audio,sequences,creator,main}.js`.
 - `vendor/three.module.min.js` - Three.js r160 (MIT, license alongside), shared by all versions.
 - `assets/training-room-stage.png` - original arena plate (v1 backdrop, select screens, Crucible matte).
 - `assets/shots/` - archive screenshots used by the hub.
