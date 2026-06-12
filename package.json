@@ -1,8 +1,8 @@
 {
-  "name": "cadence-fighter-poc",
-  "version": "0.1.0",
+  "name": "ironflow",
+  "version": "0.2.0",
   "private": true,
-  "description": "Original cadence-driven browser fighting game prototype.",
+  "description": "Ironflow: an original 3D browser fighting game built on the cadence engine. Three.js is vendored; no install step needed.",
   "scripts": {
     "start": "node server.js"
   }
