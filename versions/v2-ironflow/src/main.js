@@ -1,6 +1,6 @@
 // Ironflow bootstrap: renderer, select flow, the fight loop, and telemetry.
 
-import * as THREE from "../vendor/three.module.min.js";
+import * as THREE from "../../../vendor/three.module.min.js";
 import { ROSTER, charById } from "./data.js";
 import { createCombat } from "./combat.js";
 import { aiUpdate } from "./ai.js";
@@ -49,7 +49,7 @@ function logEvent(type, detail = {}) {
 function flushLogs() {
   if (!session.pendingLogs.length || location.protocol === "file:") return;
   const batch = session.pendingLogs.splice(0, session.pendingLogs.length);
-  fetch("/log", {
+  fetch("../../log", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(batch),

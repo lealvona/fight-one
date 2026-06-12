@@ -2,7 +2,7 @@
 // Characters are assembled from primitives (no external models) with costume
 // pieces driven by data.js, and animated by blending between authored poses.
 
-import * as THREE from "../vendor/three.module.min.js";
+import * as THREE from "../../../vendor/three.module.min.js";
 
 const JOINTS = ["spine", "chest", "neck", "head", "shL", "elL", "shR", "elR", "hipL", "kneeL", "hipR", "kneeR"];
 

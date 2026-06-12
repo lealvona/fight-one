@@ -9,7 +9,10 @@ const mime = {
   ".js": "text/javascript; charset=utf-8",
   ".css": "text/css; charset=utf-8",
   ".json": "application/json; charset=utf-8",
-  ".png": "image/png"
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".svg": "image/svg+xml"
 };
 
 const server = createServer(async (req, res) => {
@@ -44,15 +47,29 @@ const server = createServer(async (req, res) => {
   const pathname = req.url.split("?")[0];
   const rawPath = pathname === "/" ? "/index.html" : pathname;
   const safePath = normalize(decodeURIComponent(rawPath)).replace(/^(\.\.[/\\])+/, "");
-  const filePath = join(root, safePath);
+  let filePath = join(root, safePath);
 
   if (!filePath.startsWith(root)) {
     res.writeHead(403).end();
     return;
   }
 
+  // Directory-style URLs resolve to their index.html (the version archive
+  // lives at versions/<tag>/).
+  if (safePath.endsWith("/") || safePath.endsWith("\\")) filePath = join(filePath, "index.html");
+
   try {
-    const data = await readFile(filePath);
+    let data;
+    try {
+      data = await readFile(filePath);
+    } catch (error) {
+      if (!extname(filePath)) {
+        filePath = join(filePath, "index.html");
+        data = await readFile(filePath);
+      } else {
+        throw error;
+      }
+    }
     res.writeHead(200, {
       "Content-Type": mime[extname(filePath)] || "application/octet-stream",
       "Cache-Control": "no-store"

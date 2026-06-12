@@ -1,7 +1,7 @@
 // The Crucible: an after-hours training hall rendered in full 3D, plus the
 // dynamic fight camera and the impact FX pool.
 
-import * as THREE from "../vendor/three.module.min.js";
+import * as THREE from "../../../vendor/three.module.min.js";
 
 export function createStage(renderer) {
   const scene = new THREE.Scene();
@@ -56,7 +56,7 @@ export function createStage(renderer) {
   scene.add(apron);
 
   // Backdrop: the original training-room plate as a far matte painting.
-  new THREE.TextureLoader().load("assets/training-room-stage.png", tex => {
+  new THREE.TextureLoader().load("../../assets/training-room-stage.png", tex => {
     tex.colorSpace = THREE.SRGBColorSpace;
     const back = new THREE.Mesh(
       new THREE.PlaneGeometry(34, 17),
