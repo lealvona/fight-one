@@ -2,7 +2,7 @@ name: Deploy Fight One to GitHub Pages
 
 on:
   push:
-    branches: [claude/blissful-gates-dwrn98]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
