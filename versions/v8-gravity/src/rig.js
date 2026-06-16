@@ -972,6 +972,11 @@ export function createRig(char, side) {
   let swayA = 0, swayV = 0, prevDrawX = 0;
   let damage = 0;
   let collapse = null;
+  let feetWX = null;      // planted world-x of each foot (anti-skate)
+  let stepping = null;    // active step: { side, from, to, t, dur }
+  let stepCd = 0;
+  let comShift = 0;       // weight-shift onto the support leg
+  const _foot = new THREE.Vector3();
   const ik = {
     root: new THREE.Vector3(), tgt: new THREE.Vector3(), ppos: new THREE.Vector3(),
     pq: new THREE.Quaternion(), pqi: new THREE.Quaternion(), scl: new THREE.Vector3(),
@@ -1354,20 +1359,35 @@ export function createRig(char, side) {
       rate = 6.5;
     }
 
-    if (speed > 0.0004 && actor.downTime <= 0 && !actor.koed) {
-      const stride = Math.min(0.32, speed * 110);
-      goal.hipL[0] += Math.sin(walkPhase) * stride;
-      goal.hipR[0] += Math.sin(walkPhase + Math.PI) * stride;
-      goal.kneeL[0] += Math.max(0, Math.sin(walkPhase + 1.2)) * stride * 1.1;
-      goal.kneeR[0] += Math.max(0, Math.sin(walkPhase + Math.PI + 1.2)) * stride * 1.1;
-      goal.root[1] += Math.abs(Math.sin(walkPhase)) * 0.012;
-    }
-
-    // Foot-flatten: soles stay parallel to the floor on the non-kicking leg.
-    if (actor.downTime <= 0 && !actor.koed && actor.staggerTime <= 0) {
+    // Real footwork: feet hold their world position; the body steps to them.
+    // (Leg IK plants them after pushPose; here we decide steps + weight shift.)
+    const groundOK = actor.downTime <= 0 && !actor.koed && actor.staggerTime <= 0 && !sequence;
+    if (groundOK) {
+      if (!feetWX) feetWX = { L: drawX, R: drawX };
+      stepCd -= dt;
       const kickSide = actor.current && (actor.current.limb === "RL" ? "R" : actor.current.limb === "LL" ? "L" : null);
-      if (kickSide !== "L") goal.ankL[0] = -(goal.hipL[0] + goal.kneeL[0]) * 0.55 + 0.04;
-      if (kickSide !== "R") goal.ankR[0] = -(goal.hipR[0] + goal.kneeR[0]) * 0.55 + 0.04;
+      if (!stepping && stepCd <= 0) {
+        const dL = drawX - feetWX.L, dR = drawX - feetWX.R;
+        const far = Math.abs(dL) >= Math.abs(dR) ? "L" : "R";
+        const drift = far === "L" ? dL : dR;
+        if (Math.abs(drift) > 0.16 && far !== kickSide) {
+          stepping = { side: far, from: feetWX[far], to: drawX + Math.sign(drift) * 0.1, t: 0, dur: 190 };
+        }
+      }
+      if (stepping) {
+        stepping.t += dt;
+        const sp = Math.min(1, stepping.t / stepping.dur);
+        feetWX[stepping.side] = stepping.from + (stepping.to - stepping.from) * easeInOut(sp);
+        if (sp >= 1) { stepping = null; stepCd = 110; }
+      }
+      // Weight shift onto whichever foot is grounded; small torso lean + dip.
+      const support = stepping ? (stepping.side === "L" ? "R" : "L") : null;
+      const want = support ? (feetWX[support] - drawX) : 0;
+      comShift += (want - comShift) * Math.min(1, dtSec * 8);
+      goal.chest[2] = (goal.chest[2] || 0) + comShift * 0.5;
+      if (stepping) goal.root[1] -= 0.012;
+    } else {
+      feetWX = null; stepping = null;
     }
 
     if (reaction) {
@@ -1410,6 +1430,26 @@ export function createRig(char, side) {
           else if (cur.limb === "LL") applyLimbIK("L", false, ctx.aim, w);
           else if (cur.limb === "RL") applyLimbIK("R", false, ctx.aim, w);
         } catch (e) { /* IK never breaks the frame */ }
+      }
+    }
+
+    // Plant feet in world space so they don't skate: leg IK holds each foot at
+    // its planted world-x (lifting in an arc only while that foot is stepping).
+    if (feetWX && actor.downTime <= 0 && !actor.koed && actor.staggerTime <= 0 && !sequence) {
+      const kickSide = actor.current && (actor.current.limb === "RL" ? "R" : actor.current.limb === "LL" ? "L" : null);
+      poseRoot.updateWorldMatrix(true, false);
+      for (const sp of ["L", "R"]) {
+        if (sp === kickSide) continue;
+        const ank = joints[`ank${sp}`];
+        if (!ank) continue;
+        ank.updateWorldMatrix(true, false);
+        _foot.setFromMatrixPosition(ank.matrixWorld);
+        const lift = (stepping && stepping.side === sp) ? Math.sin(Math.min(1, stepping.t / stepping.dur) * Math.PI) * 0.13 : 0;
+        _foot.x = feetWX[sp];
+        _foot.y = group.position.y + H * 0.055 + lift;
+        try { applyLimbIK(sp, false, _foot, 0.55); } catch (e) { /* never break */ }
+        const hipB = joints[`hip${sp}`], kneeB = joints[`knee${sp}`];
+        if (hipB && kneeB) joints[`ank${sp}`].rotation.x = -(hipB.rotation.x + kneeB.rotation.x) * 0.5 + 0.04 + lift * 1.4;
       }
     }
 
