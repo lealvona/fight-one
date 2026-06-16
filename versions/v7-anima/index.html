@@ -639,6 +639,52 @@
 
     .charCard.customCard { border-style: dashed; }
 
+
+    .toast { position: fixed; left: 50%; bottom: 92px; transform: translateX(-50%) translateY(10px); z-index: 7; padding: 9px 16px; border-radius: 8px; background: rgba(8,13,16,0.92); border: 1px solid var(--line); color: var(--ink); font-size: 12px; letter-spacing: 0.04em; opacity: 0; pointer-events: none; transition: opacity 180ms ease, transform 180ms ease; }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    .optionsOverlay { position: fixed; inset: 0; z-index: 8; display: grid; place-items: center; padding: 18px; background: rgba(4,7,9,0.72); backdrop-filter: blur(8px); }
+    .optionsCard { width: min(520px, 100%); max-height: calc(100vh - 36px); overflow: auto; border: 1px solid rgba(244,239,228,0.18); border-radius: 10px; background: linear-gradient(180deg, rgba(8,13,16,0.96), rgba(5,8,10,0.92)); box-shadow: 0 28px 80px rgba(0,0,0,0.5); padding: 20px 22px; }
+    .optTitle { font-size: 22px; font-weight: 950; text-transform: uppercase; letter-spacing: 0.04em; }
+    .optSection { margin: 16px 0 6px; font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--gold); }
+    .optRow { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 5px 0; font-size: 13px; color: var(--muted); }
+    .optRow input[type=range] { width: 160px; accent-color: var(--gold); }
+    .optRow select { background: rgba(255,255,255,0.06); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; font: inherit; }
+    .optRow input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--gold); }
+    .optBinds { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 6px; }
+    .bindBtn { display: grid; gap: 2px; padding: 7px 6px; border: 1px solid var(--line); border-radius: 6px; background: rgba(255,255,255,0.05); color: var(--ink); cursor: pointer; font: inherit; }
+    .bindBtn i { font-style: normal; font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+    .bindBtn b { font-size: 15px; }
+    .bindBtn.listening { border-color: var(--gold); background: rgba(241,189,75,0.16); }
+    .optFoot { margin-top: 18px; display: flex; justify-content: flex-end; }
+    .optFoot .startButton { margin-top: 0; }
+    .trainingPanel { position: fixed; top: 96px; right: 14px; width: 300px; z-index: 3; padding: 12px 14px; border: 1px solid var(--line); border-radius: 9px; background: linear-gradient(180deg, rgba(8,13,16,0.82), rgba(5,8,10,0.74)); backdrop-filter: blur(12px); font-size: 11px; color: var(--muted); pointer-events: none; }
+    .trTitle { font-weight: 850; color: var(--ink); text-transform: uppercase; letter-spacing: 0.06em; font-size: 12px; margin-bottom: 8px; }
+    .trGrid { display: grid; grid-template-columns: 24px 1fr 0.7fr 0.5fr 0.4fr 0.5fr 0.4fr; gap: 4px; padding: 2px 0; font-family: ui-monospace, Menlo, monospace; font-size: 10px; }
+    .trGrid.trHead { color: var(--gold); border-bottom: 1px solid var(--line); }
+    .trGrid.trSig { color: var(--violet); }
+    .trKey { color: var(--ink); font-weight: 800; }
+    .trLive { margin-top: 8px; border-top: 1px solid var(--line); padding-top: 8px; }
+    .trRow { display: flex; gap: 6px; align-items: center; margin-bottom: 5px; }
+    .trRow b { color: var(--ink); }
+    .trReadout { min-height: 14px; }
+    .trWhiff { color: var(--red); font-weight: 800; }
+    .trReach { color: var(--green); font-weight: 800; }
+    .trPhaseRow { display: grid; grid-template-columns: 34px 1fr; gap: 6px; align-items: center; margin-top: 5px; }
+    .trBar { position: relative; display: inline-flex; height: 8px; border-radius: 4px; overflow: hidden; border: 1px solid var(--line); min-width: 120px; }
+    .trSeg { height: 100%; }
+    .trSu { background: rgba(110,184,255,0.6); }
+    .trAc { background: rgba(228,87,69,0.85); }
+    .trRe { background: rgba(170,182,187,0.4); }
+    .trHeadMark { position: absolute; top: -1px; width: 2px; height: 10px; background: #fff; }
+    .trPhaseRow b { display: block; font-size: 9px; margin-top: 2px; }
+    .trP_ACTIVE { color: var(--red); }
+    .trIdle { color: var(--muted); font-style: italic; font-size: 9px; }
+    body.a11y-contrast .plate, body.a11y-contrast .matchCard, body.a11y-contrast .selectCard { background: #05080a !important; }
+    body.a11y-contrast .callout, body.a11y-contrast .fighterName b { color: #fff !important; }
+    body.a11y-large .callout { font-size: 22px; }
+    body.a11y-large .key b { font-size: 16px; }
+    body.no-grain .filmLayer { display: none; }
+
     @media (max-width: 900px) {
       .creatorLayout { grid-template-columns: 1fr; }
 
@@ -728,6 +774,7 @@
   </div>
 
   <div id="filmLayer" class="filmLayer"></div>
+  <div id="toast" class="toast"></div>
 
   <div id="flashLayer" class="flashLayer"></div>
 
@@ -739,6 +786,8 @@
       <div id="matchStats" class="matchStats"></div>
       <div class="overlayButtons">
         <button id="rematchButton" class="startButton" type="button" hidden>Run It Back</button>
+        <button id="watchReplayButton" class="startButton ghost" type="button" hidden>Watch Replay</button>
+        <button id="shareReplayButton" class="startButton ghost" type="button" hidden>Share Replay</button>
         <button id="changeButton" class="startButton ghost" type="button" hidden>Change Fighters</button>
       </div>
     </section>
@@ -748,7 +797,7 @@
     <section class="selectCard">
       <div class="selectEyebrow">ironflow anima &middot; version seven &middot; cadence engine</div>
       <div class="selectTitle">Ironflow Anima</div>
-      <div class="selectTagline">The form is the truth: continuously-skinned organic bodies, techniques executed and received exactly as the disciplines teach them, and contact solved to the centimeter.</div>
+      <div class="selectTagline">The body comes alive: expressive faces, articulated hands, IK contact and momentum collapses - now a full game with arcade, training, options, and shareable replays.</div>
       <div class="chipLabel">Mode</div>
       <div id="modeRow" class="chipRow"></div>
       <div class="chipLabel">Stage</div>
@@ -758,6 +807,8 @@
       <div class="selectFooter">
         <span id="selectHint">Choose your fighter</span>
         <div class="selectButtons">
+          <button id="optionsButton" class="startButton ghost" type="button">Options (O)</button>
+          <button id="ghostButton" class="startButton ghost" type="button">Race Ghost</button>
           <button id="openCreator" class="startButton ghost" type="button">Create Fighter</button>
           <button id="selectRandom" class="startButton ghost" type="button">Roll Rival (R)</button>
           <button id="selectConfirm" class="startButton" type="button" disabled>Enter the Crucible</button>

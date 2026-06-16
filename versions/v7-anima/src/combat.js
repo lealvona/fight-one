@@ -2,6 +2,7 @@
 // main.js drives update() and subscribes via the effect() callback.
 
 import { BEATS, OPEN_LINE, FRAME_ELBOW, GROUND_REVERSAL, resolveMove, signatureMove } from "./data.js";
+import { mulberry32 } from "./replay.js";
 
 const QUEUE_CAP = 6;
 const INTENT_TTL = 3200;
@@ -13,7 +14,8 @@ const KNOCKDOWN_MS = 850;
 const STAGGER_MS = 1100;
 const FLOW_MAX = 100;
 
-export function createCombat({ chars, log, effect, roundTime = 60, winsNeeded = 2, maxRounds = 3 }) {
+export function createCombat({ chars, log, effect, roundTime = 60, winsNeeded = 2, maxRounds = 3, seed = 0 }) {
+  const rng = seed ? mulberry32(seed) : Math.random;
   const actors = {
     player: makeActor("player", -1, chars.player),
     enemy: makeActor("enemy", 1, chars.enemy)
@@ -808,7 +810,7 @@ export function createCombat({ chars, log, effect, roundTime = 60, winsNeeded = 
     }
   }
 
-  return { actors, game, intent, enqueueRaw: enqueue, update, startMatch };
+  return { actors, game, intent, enqueueRaw: enqueue, update, startMatch, rng };
 }
 
 function clamp(value, min, max) {

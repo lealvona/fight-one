@@ -11,6 +11,10 @@ import { createHud } from "./hud.js";
 import { createAudio } from "./audio.js";
 import { BUILDERS } from "./sequences.js";
 import { initCreator } from "./creator.js";
+import { buildArcade } from "./story.js";
+import { createTraining } from "./training.js";
+import { createMenu } from "./menu.js";
+import { createReplay } from "./replay.js";
 
 const canvas = document.getElementById("game");
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -23,6 +27,9 @@ renderer.setSize(innerWidth, innerHeight);
 
 const hud = createHud();
 const audio = createAudio();
+const training = createTraining();
+const replay = createReplay();
+const menu = createMenu({ audio, renderer, onQuality: () => {} });
 
 const session = {
   id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
@@ -33,11 +40,15 @@ const session = {
   timeScale: 1,
   last: performance.now(),
   flushClock: 0,
-  mode: "select",            // select | fight
+  mode: "select",
   config: { mode: "vsai", stage: "crucible" },
-  gauntlet: null,            // { queue: [charId], index, total, charId }
-  cameraMode: localStorage.getItem("kata.camera") || localStorage.getItem("verite.camera") || "side",
-  seqFx: []                  // scheduled choreography impacts
+  gauntlet: null,            // ladder: { kind, queue, index, total, charId }
+  cameraMode: localStorage.getItem("anima.camera") || localStorage.getItem("kata.camera") || "side",
+  seqFx: [],
+  recording: false,
+  playback: null,
+  playbackStart: 0,
+  lastReplay: null
 };
 
 const SEP_MIN = 0.62;
@@ -82,7 +93,9 @@ function startMatch(pId, eId, opts = {}) {
   const chars = { player: charById(pId), enemy: charById(eId) };
   const params = new URLSearchParams(location.search);
   const roundTime = Number(params.get("t")) || 60;
-  const gauntletBout = config.mode === "gauntlet";
+  const ladder = session.gauntlet;
+  const oneRound = ladder?.kind === "gauntlet";
+  const seed = opts.seed || (Date.now() & 0x7fffffff);
 
   buildStage(config.stage);
 
@@ -98,18 +111,35 @@ function startMatch(pId, eId, opts = {}) {
   session.stage.scene.add(session.rigs.enemy.group);
 
   session.combat = createCombat({
-    chars,
-    log: logEvent,
-    effect: onEffect,
-    roundTime: gauntletBout ? Math.min(roundTime, 45) : roundTime,
-    winsNeeded: gauntletBout ? 1 : 2,
-    maxRounds: gauntletBout ? 1 : 3
+    chars, log: logEvent, effect: onEffect,
+    roundTime: oneRound ? Math.min(roundTime, 45) : roundTime,
+    winsNeeded: oneRound ? 1 : 2,
+    maxRounds: oneRound ? 1 : 3,
+    seed
   });
   hud.bindFighters(chars.player, chars.enemy, config);
   hud.showSelect(false);
   session.mode = "fight";
+
+  session.playback = null;
+  session.recording = false;
+  replay.stop();
+  if (opts.playback) {
+    session.playback = replay.player(opts.playback);
+    session.playbackStart = 0;
+  } else if (!ladder && config.mode !== "spectate") {
+    session.recording = true;
+    session.replayMeta = { p: pId, e: eId, stage: config.stage, mode: config.mode, seed };
+  }
+
+  audio.resume();
+  audio.startCrowd();
+  audio.startMusic(config.stage, 0.4);
+
+  if (config.mode === "training") training.show(chars.player); else training.hide();
+
   session.combat.startMatch();
-  logEvent("session", { href: location.href, mode: config.mode, stage: config.stage, player: pId, enemy: eId, gauntlet: session.gauntlet ? `${session.gauntlet.index + 1}/${session.gauntlet.total}` : null });
+  logEvent("session", { href: location.href, mode: config.mode, stage: config.stage, player: pId, enemy: eId, ladder: ladder ? `${ladder.kind} ${ladder.index + 1}/${ladder.total}` : null });
 }
 
 function startGauntlet(pId) {
@@ -118,11 +148,18 @@ function startGauntlet(pId) {
     const j = Math.floor(Math.random() * (i + 1));
     [others[i], others[j]] = [others[j], others[i]];
   }
-  session.gauntlet = { queue: others, index: 0, total: others.length, charId: pId };
+  session.gauntlet = { kind: "gauntlet", queue: others, index: 0, total: others.length, charId: pId };
   startMatch(pId, others[0]);
 }
 
-function gauntletMods() {
+function startArcade(pId) {
+  session.gauntlet = buildArcade(pId);
+  const a = session.gauntlet;
+  startMatch(pId, a.queue[0]);
+  session.combat.game.banner = { title: a.title, sub: a.intro, eyebrow: "arcade", visible: true, button: false };
+}
+
+function ladderMods() {
   if (!session.gauntlet) return null;
   const k = session.gauntlet.index / Math.max(1, session.gauntlet.total - 1);
   return { aggression: k * 0.25, readSkill: k * 0.2 };
@@ -131,6 +168,11 @@ function gauntletMods() {
 function backToSelect() {
   session.mode = "select";
   session.gauntlet = null;
+  session.playback = null;
+  session.recording = false;
+  audio.stopMusic();
+  audio.stopCrowd();
+  training.hide();
   if (session.combat) session.combat.game.banner.visible = false;
   hud.showSelect(true);
 }
@@ -155,6 +197,16 @@ function solveLungeDistance(attackerId, defenderId, move) {
 function anySequenceActive() {
   return (session.rigs.player && session.rigs.player.sequenceActive()) ||
     (session.rigs.enemy && session.rigs.enemy.sequenceActive());
+}
+
+const IK_LIMBS = new Set(["LH", "RH", "LL", "RL", "BR"]);
+function aimFor(attackerId, defenderId) {
+  const a = session.combat.actors[attackerId];
+  const cur = a.current;
+  if (!cur || !IK_LIMBS.has(cur.limb)) return null;
+  if (a.phaseTime < cur.startup || a.phaseTime > cur.startup + cur.active) return null;
+  const zone = cur.height === "high" ? "head" : cur.height === "low" ? "kneeL" : "chest";
+  return rigOf(defenderId).worldPoint(zone).clone();
 }
 
 // Run a two-body choreography: freeze the sim, hand both rigs their tracks,
@@ -217,6 +269,23 @@ function onEffect(type, payload) {
   if (!combat || !stage) return;
 
   switch (type) {
+    case "moveStart": {
+      const m = payload.move;
+      if (m && (m.family === "strike" || m.family === "art") && !m.free) {
+        audio.kiai(1.25 - combat.actors[payload.actor].char.stats.weight * 0.35);
+      }
+      if (session.recording && m && !m.free && !m.ground && m.key) {
+        const k = m.key.length === 1 ? m.key.toLowerCase() : m.key === "G" ? "g" : null;
+        if (k) replay.record(payload.actor, k);
+      }
+      break;
+    }
+    case "fightStart": {
+      audio.announce("Fight");
+      if (session.recording && !replay.recording()) replay.start(session.replayMeta);
+      if (session.playback) session.playbackStart = performance.now();
+      break;
+    }
     case "hit":
     case "takedown":
     case "signature": {
@@ -335,6 +404,7 @@ function onEffect(type, payload) {
       stage.flashRim(-1, 60);
       stage.flashRim(1, 60);
       audio.boom();
+      audio.announce("K O");
       // If the finishing blow wasn't already a choreographed slam/launcher,
       // play the clean collapse.
       if (!anySequenceActive()) {
@@ -359,6 +429,7 @@ function onEffect(type, payload) {
       rigOf("enemy").react("reset");
       rigOf("player").react("intro");
       rigOf("enemy").react("intro");
+      audio.announce(`Round ${combat.game.round}`);
       break;
     }
     case "roundResult": {
@@ -372,45 +443,47 @@ function onEffect(type, payload) {
     case "matchOver": {
       if (payload.winner === "player" || payload.winner === "enemy") {
         rigOf(payload.winner).react("celebrate");
+        audio.announce(payload.winner === "player" ? "You win" : "You lose");
       }
       hud.showStats(combat);
-      handleGauntletResult(payload.winner);
+      finishReplay(payload.winner);
+      handleLadderResult(payload.winner);
       break;
     }
   }
 }
 
-function handleGauntletResult(winner) {
-  if (session.config.mode !== "gauntlet" || !session.gauntlet) return;
-  const g = session.gauntlet;
-  const combat = session.combat;
+function finishReplay(winner) {
+  if (!session.recording || session.gauntlet) return;
+  const data = replay.stop();
+  session.recording = false;
+  if (!data || !data.events.length) return;
+  session.lastReplay = data;
+  if (winner === "player") replay.saveGhost(data);
+  hud.showReplayActions(true);
+}
 
+function handleLadderResult(winner) {
+  const g = session.gauntlet;
+  if (!g) return;
+  const combat = session.combat;
+  const advance = () => startMatch(g.charId, g.queue[g.index]);
   if (winner === "player") {
     if (g.index + 1 >= g.total) {
-      combat.game.banner = {
-        title: "Crucible Champion", sub: `All ${g.total} rivals answered`,
-        eyebrow: "gauntlet complete", visible: true, button: true
-      };
-      logEvent("gauntlet", { state: "champion" });
+      const title = g.kind === "arcade" ? "Champion" : "Crucible Champion";
+      const sub = g.kind === "arcade" ? g.ending : `All ${g.total} rivals answered`;
+      combat.game.banner = { title, sub, eyebrow: `${g.kind} complete`, visible: true, button: true };
+      logEvent("ladder", { kind: g.kind, state: "champion" });
       session.gauntlet = null;
     } else {
       g.index += 1;
-      combat.game.banner = {
-        title: `Bout ${g.index + 1} / ${g.total}`, sub: `${charById(g.queue[g.index]).name} steps in`,
-        eyebrow: "the gauntlet continues", visible: true, button: false
-      };
-      setTimeout(() => {
-        if (session.config.mode === "gauntlet" && session.gauntlet === g) {
-          startMatch(g.charId, g.queue[g.index]);
-        }
-      }, 2400);
+      const sub = g.kind === "arcade" ? g.taunt(g.index) : `${charById(g.queue[g.index]).name} steps in`;
+      combat.game.banner = { title: `Bout ${g.index + 1} / ${g.total}`, sub, eyebrow: `the ${g.kind} continues`, visible: true, button: false };
+      setTimeout(() => { if (session.gauntlet === g) advance(); }, 2600);
     }
   } else {
-    combat.game.banner = {
-      title: "Run Ends", sub: `Fell at bout ${g.index + 1} of ${g.total}`,
-      eyebrow: "the gauntlet remembers", visible: true, button: true
-    };
-    logEvent("gauntlet", { state: "fell", bout: g.index + 1 });
+    combat.game.banner = { title: "Run Ends", sub: `Fell at bout ${g.index + 1} of ${g.total}`, eyebrow: `the ${g.kind} remembers`, visible: true, button: true };
+    logEvent("ladder", { kind: g.kind, state: "fell", bout: g.index + 1 });
     session.gauntlet = null;
   }
 }
@@ -424,17 +497,21 @@ addEventListener("keydown", event => {
   audio.resume();
   const key = event.key.toLowerCase();
 
+  if (menu.isOpen()) { if (key === "escape" || key === "o") { menu.close(); event.preventDefault(); } return; }
+
   if (session.mode === "select") {
-    if (/^[1-8]$/.test(key)) { hud.pickByIndex(Number(key) - 1); event.preventDefault(); }
+    if (/^[1-9]$/.test(key)) { hud.pickByIndex(Number(key) - 1); event.preventDefault(); }
     else if (key === "r") { hud.randomRival(); event.preventDefault(); }
+    else if (key === "o") { menu.open(); event.preventDefault(); }
     else if (key === "enter") { hud.confirmSelect(); event.preventDefault(); }
     return;
   }
 
   if (key === "escape") { backToSelect(); return; }
+  if (key === "o") { menu.open(); event.preventDefault(); return; }
   if (key === "c" && session.config.mode !== "pvp") {
     session.cameraMode = session.cameraMode === "side" ? "ots" : "side";
-    localStorage.setItem("kata.camera", session.cameraMode);
+    localStorage.setItem("anima.camera", session.cameraMode);
     hud.setCameraMode(session.cameraMode);
     event.preventDefault();
     return;
@@ -443,19 +520,19 @@ addEventListener("keydown", event => {
 
   const now = performance.now();
   const cfg = session.config.mode;
+  const playerLocked = cfg === "spectate" || session.playback;
 
-  if (P1_KEYS.has(key) && cfg !== "spectate") {
-    event.preventDefault();
-    if (session.combat.intent("player", key, now)) {
-      session.combat.game.lastPlayerIntent = now;
+  if (!playerLocked) {
+    const action = menu.keymap()[key];
+    if (action) {
+      event.preventDefault();
+      if (session.combat.intent("player", action, now)) session.combat.game.lastPlayerIntent = now;
+      return;
     }
-    return;
   }
   if (cfg === "pvp" && P2_KEYS[key]) {
     event.preventDefault();
-    if (session.combat.intent("enemy", P2_KEYS[key], now)) {
-      session.combat.game.lastPlayerIntent = now;
-    }
+    if (session.combat.intent("enemy", P2_KEYS[key], now)) session.combat.game.lastPlayerIntent = now;
   }
 });
 
@@ -463,7 +540,7 @@ addEventListener("pointerdown", () => audio.resume(), { capture: true });
 
 document.querySelector(".keysGrid").addEventListener("pointerdown", event => {
   const key = event.target.closest("[data-key]")?.dataset.key;
-  if (!key || !session.combat || session.mode !== "fight" || session.config.mode === "spectate") return;
+  if (!key || !session.combat || session.mode !== "fight" || session.config.mode === "spectate" || session.playback) return;
   event.preventDefault();
   const now = performance.now();
   if (session.combat.intent("player", key, now)) {
@@ -509,22 +586,30 @@ function frame(now) {
     combat.update(now, dt);
 
     const cfg = session.config.mode;
-    if (cfg === "vsai") {
+    if (session.playback) {
+      const elapsed = now - session.playbackStart;
+      if (session.playbackStart) {
+        for (const ev of session.playback.due(elapsed)) combat.intent(ev.s === 0 ? "player" : "enemy", ev.k, now);
+      }
+    } else if (cfg === "vsai" || cfg === "training") {
       aiUpdate(combat, dt, now, "enemy", null, true);
-    } else if (cfg === "gauntlet") {
-      aiUpdate(combat, dt, now, "enemy", gauntletMods(), true);
+    } else if (cfg === "arcade" || cfg === "gauntlet") {
+      aiUpdate(combat, dt, now, "enemy", ladderMods(), true);
     } else if (cfg === "spectate") {
       aiUpdate(combat, dt, now, "player", null, false);
       aiUpdate(combat, dt, now, "enemy", null, false);
     }
+    if (menu.settings.reducedMotion) combat.game.shake *= 0.25;
 
     const sep = SEP_MIN + combat.game.range * (SEP_MAX - SEP_MIN);
     const px = -sep / 2;
     const ex = sep / 2;
     const seqLive = anySequenceActive();
     const rigDt = combat.game.hitStop > 0 && !seqLive ? dtRaw * 0.16 : dtRaw;
-    session.rigs.player.update(rigDt, { actor: combat.actors.player, game: combat.game, t: now, targetX: px, faceSign: 1 });
-    session.rigs.enemy.update(rigDt, { actor: combat.actors.enemy, game: combat.game, t: now, targetX: ex, faceSign: -1 });
+    const pAim = aimFor("player", "enemy");
+    const eAim = aimFor("enemy", "player");
+    session.rigs.player.update(rigDt, { actor: combat.actors.player, game: combat.game, t: now, targetX: px, faceSign: 1, aim: pAim });
+    session.rigs.enemy.update(rigDt, { actor: combat.actors.enemy, game: combat.game, t: now, targetX: ex, faceSign: -1, aim: eAim });
     processSeqFx(now);
     const camGame = seqLive ? { slowMo: 1, slowMoScale: 0.5, shake: combat.game.shake } : combat.game;
     const view = {
@@ -533,6 +618,8 @@ function frame(now) {
     };
     session.stage.updateCamera(dtRaw, camGame, (session.rigs.player.x + session.rigs.enemy.x) / 2, sep, now, view);
     hud.update(combat, session.config, session.gauntlet);
+    if (cfg === "training") training.update(combat);
+    audio.setIntensity(0.3 + (1 - Math.min(combat.actors.player.hp, combat.actors.enemy.hp) / 100) * 0.7);
   } else {
     session.timeScale = 1;
     if (session.stage) session.stage.updateCamera(dtRaw, { slowMo: 0, shake: 0 }, 0, 2.4, now, null);
@@ -558,15 +645,37 @@ hud.buildSelect({
   onStart: (config, pId, eId) => {
     session.config = { mode: config.mode, stage: config.stage };
     if (config.mode === "gauntlet") startGauntlet(pId);
+    else if (config.mode === "arcade") startArcade(pId);
     else startMatch(pId, eId);
   }
 });
 initCreator({ onSaved: () => hud.rebuildRoster() });
+
+hud.el.optionsButton?.addEventListener("click", () => menu.open());
+hud.el.watchReplayButton?.addEventListener("click", () => {
+  if (session.lastReplay) {
+    session.config = { mode: session.lastReplay.meta.mode, stage: session.lastReplay.meta.stage };
+    hud.showReplayActions(false);
+    startMatch(session.lastReplay.meta.p, session.lastReplay.meta.e, { playback: session.lastReplay, seed: session.lastReplay.meta.seed });
+  }
+});
+hud.el.shareReplayButton?.addEventListener("click", () => {
+  if (!session.lastReplay) return;
+  const code = replay.encode(session.lastReplay);
+  navigator.clipboard?.writeText(code).then(() => hud.toast("Replay code copied to clipboard"), () => hud.toast("Copy failed - code in console"));
+  console.log("[replay code]", code);
+});
+hud.el.ghostButton?.addEventListener("click", () => {
+  const sel = hud.currentPicks();
+  const g = sel && replay.getGhost(sel.p, sel.e);
+  if (g) { session.config = { mode: "vsai", stage: g.meta.stage }; startMatch(g.meta.p, g.meta.e, { playback: g, seed: g.meta.seed }); }
+  else hud.toast("No ghost saved for this matchup yet");
+});
 hud.setCameraMode(session.cameraMode);
 hud.el.camButton.addEventListener("click", () => {
   if (session.config.mode === "pvp") return;
   session.cameraMode = session.cameraMode === "side" ? "ots" : "side";
-  localStorage.setItem("kata.camera", session.cameraMode);
+  localStorage.setItem("anima.camera", session.cameraMode);
   hud.setCameraMode(session.cameraMode);
 });
 
@@ -598,6 +707,7 @@ if (params.get("autostart") === "1") {
   const p = params.get("p") || "daichi";
   const e = params.get("e") || "renzo";
   if (session.config.mode === "gauntlet") startGauntlet(p);
+  else if (session.config.mode === "arcade") startArcade(p);
   else startMatch(p, e);
 } else {
   hud.showSelect(true);

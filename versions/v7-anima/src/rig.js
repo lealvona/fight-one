@@ -331,6 +331,51 @@ function makeClothTexture(color, coarse) {
   return tex;
 }
 
+// Normal map from a height field: relief without polycount.
+function makeNormalTexture(paintHeight, strength = 1) {
+  const size = 128;
+  const h = document.createElement("canvas");
+  h.width = h.height = size;
+  const hc = h.getContext("2d");
+  hc.fillStyle = "#808080"; hc.fillRect(0, 0, size, size);
+  paintHeight(hc, size);
+  const src = hc.getImageData(0, 0, size, size).data;
+  const out = hc.createImageData(size, size);
+  const at = (x, y) => src[(((y + size) % size) * size + ((x + size) % size)) * 4];
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    const dx = (at(x - 1, y) - at(x + 1, y)) / 255 * strength;
+    const dy = (at(x, y - 1) - at(x, y + 1)) / 255 * strength;
+    const len = Math.hypot(dx, dy, 1);
+    const i = (y * size + x) * 4;
+    out.data[i] = Math.round((dx / len * 0.5 + 0.5) * 255);
+    out.data[i + 1] = Math.round((dy / len * 0.5 + 0.5) * 255);
+    out.data[i + 2] = Math.round((1 / len * 0.5 + 0.5) * 255);
+    out.data[i + 3] = 255;
+  }
+  hc.putImageData(out, 0, 0);
+  const tex = new THREE.CanvasTexture(h);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  return tex;
+}
+function skinNormalTexture(isTorso) {
+  return makeNormalTexture((c, size) => {
+    for (let i = 0; i < 2600; i++) { const v = Math.random() > 0.5 ? 150 : 110; c.fillStyle = `rgb(${v},${v},${v})`; c.fillRect(Math.random() * size, Math.random() * size, 1.4, 1.4); }
+    if (isTorso) {
+      c.strokeStyle = "rgba(60,60,60,0.9)"; c.lineWidth = 2.5;
+      for (const u of [0.40, 0.60]) { c.beginPath(); c.arc(u * size, size * 0.70, size * 0.08, Math.PI * 0.1, Math.PI * 0.9); c.stroke(); }
+      c.fillStyle = "rgba(180,180,180,0.5)";
+      for (const v of [0.40, 0.48, 0.56]) c.fillRect(size * 0.42, v * size, size * 0.16, 2);
+    }
+  }, 1.1);
+}
+function clothNormalTexture(coarse) {
+  return makeNormalTexture((c, size) => {
+    const step = coarse ? 5 : 3;
+    for (let y = 0; y < size; y += step) { c.fillStyle = (y / step) % 2 ? "#b0b0b0" : "#505050"; c.fillRect(0, y, size, step * 0.6); }
+    for (let x = 0; x < size; x += step) { c.fillStyle = (x / step) % 2 ? "rgba(200,200,200,0.4)" : "rgba(40,40,40,0.4)"; c.fillRect(x, 0, step * 0.5, size); }
+  }, coarse ? 1.4 : 0.8);
+}
+
 // ---------------------------------------------------------------------------
 // Lofted body geometry: cross-section sweeps with per-ring bone weights.
 // ---------------------------------------------------------------------------
@@ -393,16 +438,19 @@ export function createRig(char, side) {
   const mats = [];
   const flashMats = [];
   const accentMats = [];
+  const skinMats = [];
   const textures = [];
 
   function mat(color, opts = {}) {
     const m = new THREE.MeshStandardMaterial({ color, roughness: opts.rough ?? 0.72, metalness: opts.metal ?? 0.04 });
     m.envMapIntensity = opts.envInt ?? (opts.metal && opts.metal > 0.3 ? 1.0 : 0.2);
     if (opts.map) { m.map = opts.map; textures.push(opts.map); }
+    if (opts.normal) { m.normalMap = opts.normal; m.normalScale = new THREE.Vector2(opts.normalScale ?? 0.6, opts.normalScale ?? 0.6); textures.push(opts.normal); }
     if (opts.emissive) { m.emissive = new THREE.Color(opts.emissive); m.emissiveIntensity = opts.emissiveIntensity ?? 1; }
     mats.push(m);
     if (opts.flash !== false) flashMats.push(m);
     if (opts.accent) accentMats.push(m);
+    if (opts.skin) { m.userData.baseColor = new THREE.Color(color); m.userData.baseRough = m.roughness; skinMats.push(m); }
     return m;
   }
 
@@ -426,24 +474,29 @@ export function createRig(char, side) {
     return mesh;
   }
 
-  // --- region materials (organic surfaces get textured maps) -----------------
+  // --- region materials (organic surfaces get textured + normal-mapped) ------
+  const skinNT = skinNormalTexture(false);
+  const skinNTtorso = skinNormalTexture(true);
+  const clothNT = clothNormalTexture(false);
+  const clothNTcoarse = clothNormalTexture(true);
+
   const skinTorso = co.gi || co.tunic || co.bodysuit || co.armor ? null : makeSkinTexture(c.skin, true);
   const torsoClothColor = co.gi ? c.gi : co.tunic ? c.top : co.bodysuit ? c.suit : co.armor ? c.under : null;
   const torsoM = torsoClothColor !== null
-    ? mat(0xffffff, { map: makeClothTexture(torsoClothColor, !!co.gi), rough: 0.85, envInt: 0.15 })
-    : mat(0xffffff, { map: skinTorso, rough: 0.55, envInt: 0.34 });
+    ? mat(0xffffff, { map: makeClothTexture(torsoClothColor, !!co.gi), normal: co.gi ? clothNTcoarse : clothNT, normalScale: 0.7, rough: 0.85, envInt: 0.15 })
+    : mat(0xffffff, { map: skinTorso, normal: skinNTtorso, normalScale: 0.5, rough: 0.5, envInt: 0.36, skin: true });
 
   const legClothColor = co.trunks ? null : (c.trousers || c.tights || (co.bodysuit ? c.suit : co.armor ? c.under : co.gi ? c.giShade : c.legs || null));
   const legM = legClothColor !== null
-    ? mat(0xffffff, { map: makeClothTexture(legClothColor, !!co.gi), rough: 0.85, envInt: 0.15 })
-    : mat(0xffffff, { map: makeSkinTexture(c.skin, false), rough: 0.55, envInt: 0.34 });
+    ? mat(0xffffff, { map: makeClothTexture(legClothColor, !!co.gi), normal: co.gi ? clothNTcoarse : clothNT, normalScale: 0.7, rough: 0.85, envInt: 0.15 })
+    : mat(0xffffff, { map: makeSkinTexture(c.skin, false), normal: skinNT, normalScale: 0.5, rough: 0.5, envInt: 0.36, skin: true });
 
   const armClothColor = co.gi ? c.gi : co.bodysuit ? c.suit : co.armor ? c.under : co.tunic ? c.top : null;
   const armM = armClothColor !== null
-    ? mat(0xffffff, { map: makeClothTexture(armClothColor, !!co.gi), rough: 0.85, envInt: 0.15 })
-    : mat(0xffffff, { map: makeSkinTexture(c.skin, false), rough: 0.55, envInt: 0.34 });
+    ? mat(0xffffff, { map: makeClothTexture(armClothColor, !!co.gi), normal: co.gi ? clothNTcoarse : clothNT, normalScale: 0.7, rough: 0.85, envInt: 0.15 })
+    : mat(0xffffff, { map: makeSkinTexture(c.skin, false), normal: skinNT, normalScale: 0.5, rough: 0.5, envInt: 0.36, skin: true });
 
-  const skinM = mat(c.skin, { rough: 0.55, envInt: 0.34 });
+  const skinM = mat(c.skin, { rough: 0.5, envInt: 0.36, normal: skinNT, normalScale: 0.4, skin: true });
   const skinShadeM = mat(shade(c.skin, 0.82));
   const hairM = c.hair !== undefined ? mat(c.hair) : skinShadeM;
   const accentM = mat(c.accent, { emissive: c.accent, emissiveIntensity: 0.35, accent: true, metal: 0.1, rough: 0.4 });
@@ -575,23 +628,34 @@ export function createRig(char, side) {
   buildHead();
 
   for (const [p, dir] of [["L", 1], ["R", -1]]) {
-    // Hand: palm + finger block + thumb on the wrist bone.
+    // Hand: palm + four articulated fingers (curl to a fist) + opposed thumb.
     const handM = co.wraps ? mat(c.wraps) : skinM;
     const hand = new THREE.Group();
-    const palm = box(H * 0.042, H * 0.05, H * 0.026, handM);
+    const palm = box(H * 0.044, H * 0.052, H * 0.03, handM);
     hand.add(palm);
-    const fingers = box(H * 0.04, H * 0.042, H * 0.03, handM);
-    fingers.position.set(0, -H * 0.012, H * 0.024);
-    fingers.rotation.x = 0.5;
-    hand.add(fingers);
-    const thumb = box(H * 0.014, H * 0.026, H * 0.016, handM);
-    thumb.position.set(dir * H * 0.026, H * 0.008, H * 0.012);
-    thumb.rotation.z = dir * 0.4;
-    hand.add(thumb);
-    hand.position.y = -H * 0.022;
+    const fingerRoot = new THREE.Group();
+    fingerRoot.position.set(0, -H * 0.026, H * 0.004);
+    hand.add(fingerRoot);
+    const fingerLen = H * 0.05;
+    for (let f = 0; f < 4; f++) {
+      const finger = box(H * 0.0095, fingerLen, H * 0.026, handM);
+      finger.position.set((f - 1.5) * H * 0.011, -fingerLen / 2, H * 0.012);
+      fingerRoot.add(finger);
+    }
+    const thumbPivot = new THREE.Group();
+    thumbPivot.position.set(dir * H * 0.024, -H * 0.004, H * 0.008);
+    hand.add(thumbPivot);
+    const thumb = box(H * 0.015, H * 0.03, H * 0.018, handM);
+    thumb.position.set(0, -H * 0.012, 0);
+    thumb.rotation.z = dir * 0.5;
+    thumbPivot.add(thumb);
+    hand.position.y = -H * 0.024;
     hand.rotation.x = -0.25;
     joints[`wr${p}`].add(hand);
     joints[`hand${p}`] = hand;
+    joints[`fingers${p}`] = fingerRoot;
+    joints[`thumb${p}`] = thumbPivot;
+    joints[`thumbDir${p}`] = dir;
 
     // Foot: heel + toes on the ankle bone.
     const footM = co.barefoot ? skinM : mat(c.boots || c.guards || 0x14171a);
@@ -655,6 +719,8 @@ export function createRig(char, side) {
     const jaw = sphere(r * 0.78, headM, 0.86, 0.74, 0.92);
     jaw.position.set(0, r * 0.52, r * 0.12);
     joints.head.add(jaw);
+    joints.faceJaw = jaw;
+    joints.faceJawBaseY = r * 0.52;
 
     if (co.helm) {
       const helm = box(r * 2.35, r * 2.35, r * 2.4, mat(c.armor, { metal: 0.6, rough: 0.35 }));
@@ -689,19 +755,32 @@ export function createRig(char, side) {
       return;
     }
 
-    const scleraM = mat(0xf2efe6, { flash: false, rough: 0.35 });
-    const irisM = mat(0x2a1f18, { flash: false, rough: 0.3 });
+    const scleraM = mat(0xf2efe6, { flash: false, rough: 0.28, envInt: 0.5 });
+    const irisM = mat(0x2a1f18, { flash: false, rough: 0.2, envInt: 0.7 });
+    const lidM = mat(c.skin, { rough: 0.5, skin: true });
+    const face = { irises: [], lids: [], brows: [], eyeY: r * 1.1, eyeZ: r * 0.93, browBaseY: r * 1.36, browTilt: BROW_FLAVOR[char.id] ?? 0.1 };
     for (const dir of [-1, 1]) {
       const eye = sphere(r * 0.17, scleraM, 1, 0.82, 0.5);
-      eye.position.set(dir * r * 0.36, r * 1.1, r * 0.84);
+      eye.position.set(dir * r * 0.36, face.eyeY, r * 0.84);
       joints.head.add(eye);
-      const iris = sphere(r * 0.075, irisM, 1, 1, 0.5);
-      iris.position.set(dir * r * 0.36, r * 1.1, r * 0.93);
+      const iris = sphere(r * 0.08, irisM, 1, 1, 0.6);
+      iris.position.set(dir * r * 0.36, face.eyeY, face.eyeZ);
+      iris.userData.bx = dir * r * 0.36;
       joints.head.add(iris);
-      const brow = box(r * 0.38, r * 0.07, r * 0.08, hairM);
-      brow.position.set(dir * r * 0.36, r * 1.36, r * 0.86);
-      brow.rotation.z = dir * (BROW_FLAVOR[char.id] ?? 0.1);
+      face.irises.push(iris);
+      const lid = sphere(r * 0.185, lidM, 1, 0.6, 0.62);
+      lid.position.set(dir * r * 0.36, face.eyeY + r * 0.14, r * 0.82);
+      lid.userData.openY = face.eyeY + r * 0.14;
+      lid.userData.shutY = face.eyeY - r * 0.02;
+      joints.head.add(lid);
+      face.lids.push(lid);
+      const brow = box(r * 0.4, r * 0.08, r * 0.09, hairM);
+      brow.position.set(dir * r * 0.36, face.browBaseY, r * 0.86);
+      brow.rotation.z = dir * face.browTilt;
+      brow.userData.bx = dir * r * 0.36;
+      brow.userData.dir = dir;
       joints.head.add(brow);
+      face.brows.push(brow);
       const ear = sphere(r * 0.18, skinM, 0.5, 0.7, 0.7);
       ear.position.set(dir * r * 0.92, r * 1.02, 0);
       joints.head.add(ear);
@@ -710,9 +789,12 @@ export function createRig(char, side) {
     nose.position.set(0, r * 0.92, r * 0.92);
     nose.rotation.x = 0.18;
     joints.head.add(nose);
-    const mouth = box(r * 0.36, r * 0.05, 0.01, mat(shade(c.skin, 0.6), { flash: false }));
-    mouth.position.set(0, r * 0.52, r * 0.88);
+    const mouth = sphere(r * 0.2, mat(shade(c.skin, 0.5), { flash: false, rough: 0.5 }), 1, 0.28, 0.5);
+    mouth.position.set(0, r * 0.54, r * 0.9);
+    mouth.userData.baseY = r * 0.54;
     joints.head.add(mouth);
+    face.mouth = mouth;
+    joints.face = face;
   }
 
   function buildCostume() {
@@ -884,6 +966,19 @@ export function createRig(char, side) {
   let sequence = null;
   let lunge = null;
 
+  let blinkTimer = 700 + Math.random() * 2400;
+  let blinking = 0;
+  let clenchL = 0.6, clenchR = 0.6;
+  let swayA = 0, swayV = 0, prevDrawX = 0;
+  let damage = 0;
+  let collapse = null;
+  const ik = {
+    root: new THREE.Vector3(), tgt: new THREE.Vector3(), ppos: new THREE.Vector3(),
+    pq: new THREE.Quaternion(), pqi: new THREE.Quaternion(), scl: new THREE.Vector3(),
+    f: new THREE.Vector3(), axis: new THREE.Vector3(), up: new THREE.Vector3(0, -1, 0),
+    q: new THREE.Quaternion()
+  };
+
   applyPoseImmediate(composePose(stanceBase));
 
   function stancePose() {
@@ -1005,7 +1100,7 @@ export function createRig(char, side) {
     } else if (type === "defeated") {
       defeated = true; celebrate = false;
     } else if (type === "reset") {
-      celebrate = false; defeated = false; reaction = null; sequence = null; lunge = null;
+      celebrate = false; defeated = false; reaction = null; sequence = null; lunge = null; collapse = null;
     }
   }
 
@@ -1066,6 +1161,107 @@ export function createRig(char, side) {
     if (sequence.time >= sequence.duration) sequence = null;
   }
 
+  function updateFace(actor, dt) {
+    const face = joints.face;
+    if (!face) return;
+    const r = dims.headR;
+    let lidClose = 0, browFurrow = 0, browRaise = 0, mouthOpen = 0;
+    blinkTimer -= dt;
+    if (blinking > 0) { blinking -= dt; lidClose = Math.max(lidClose, Math.sin(Math.max(0, blinking) / 120 * Math.PI)); }
+    else if (blinkTimer <= 0) { blinking = 120; blinkTimer = 1600 + Math.random() * 3200; }
+    if (actor.koed) { lidClose = 1; mouthOpen = 0.5; browFurrow = 0.2; }
+    else if (defeated || actor.staggerTime > 0) { lidClose = Math.max(lidClose, 0.6); browFurrow = 0.7; mouthOpen = 0.4; }
+    else if (actor.downTime > 0) { lidClose = Math.max(lidClose, 0.45); browFurrow = 0.5; }
+    else {
+      const pulse = actor.hitPulse / 240;
+      if (pulse > 0.1) { lidClose = Math.max(lidClose, pulse * 0.9); browFurrow = Math.max(browFurrow, pulse); mouthOpen = Math.max(mouthOpen, pulse * 0.6); }
+      if (actor.current && actor.current.family !== "guard" && actor.current.family !== "evade") {
+        const su = actor.current.startup;
+        if (actor.phaseTime > su && actor.phaseTime < su + actor.current.active) { browFurrow = Math.max(browFurrow, 0.6); mouthOpen = Math.max(mouthOpen, 0.5); }
+      }
+      if (actor.flowState) browRaise = 0.3;
+      if (actor.posture < actor.postureMax * 0.3) { browFurrow = Math.max(browFurrow, 0.4); mouthOpen = Math.max(mouthOpen, 0.3); }
+      browFurrow = Math.max(browFurrow, damage * 0.3);
+    }
+    for (const lid of face.lids) lid.position.y += (THREE.MathUtils.lerp(lid.userData.openY, lid.userData.shutY, lidClose) - lid.position.y) * Math.min(1, dt / 60);
+    for (const brow of face.brows) {
+      const ty = face.browBaseY + browRaise * r * 0.12 - browFurrow * r * 0.16;
+      const tz = brow.userData.dir * face.browTilt - browFurrow * brow.userData.dir * 0.5;
+      brow.position.y += (ty - brow.position.y) * Math.min(1, dt / 70);
+      brow.rotation.z += (tz - brow.rotation.z) * Math.min(1, dt / 70);
+    }
+    const look = Math.sin(actor.sway + performance.now() * 0.0006) * r * 0.02;
+    for (const iris of face.irises) iris.position.x += (iris.userData.bx + r * 0.04 + look - iris.position.x) * Math.min(1, dt / 90);
+    if (face.mouth) {
+      const sy = 0.28 + mouthOpen * 1.4;
+      face.mouth.scale.y += (sy - face.mouth.scale.y) * Math.min(1, dt / 60);
+      face.mouth.position.y += ((face.mouth.userData.baseY - mouthOpen * r * 0.06) - face.mouth.position.y) * Math.min(1, dt / 60);
+    }
+    if (joints.faceJaw) joints.faceJaw.position.y += ((joints.faceJawBaseY - mouthOpen * r * 0.07) - joints.faceJaw.position.y) * Math.min(1, dt / 60);
+  }
+
+  function updateHands(actor, dt) {
+    let wantL = 0.6, wantR = 0.6;
+    const cur = actor.current;
+    if (cur) {
+      if (cur.limb === "LH") wantL = 1;
+      else if (cur.limb === "RH") wantR = 1;
+      else if (cur.limb === "BR") { wantL = 0; wantR = 0; }
+      else if (cur.limb === "GR") { wantL = 0.25; wantR = 0.25; }
+      else if (cur.limb === "DEF") { wantL = 0.9; wantR = 0.9; }
+    }
+    if (actor.koed || actor.downTime > 0) { wantL = 0.2; wantR = 0.2; }
+    const k = Math.min(1, dt / 70);
+    clenchL += (wantL - clenchL) * k;
+    clenchR += (wantR - clenchR) * k;
+    for (const [pp, cl] of [["L", clenchL], ["R", clenchR]]) {
+      const fr = joints[`fingers${pp}`], th = joints[`thumb${pp}`];
+      if (fr) fr.rotation.x = -0.15 + cl * 1.7;
+      if (th) { th.rotation.x = cl * 0.9; th.rotation.z = joints[`thumbDir${pp}`] * (0.2 + cl * 0.5); }
+    }
+  }
+
+  function updateSecondary(dt, dtSec, drawX) {
+    if (!joints.clothSway) return;
+    const accel = (drawX - prevDrawX);
+    prevDrawX = drawX;
+    swayV += (-swayA * 0.02 - swayV * 0.16 - accel * 9 - 0.0008);
+    swayA += swayV * Math.min(0.05, dtSec);
+    swayA = Math.max(-0.9, Math.min(0.9, swayA));
+    joints.clothSway.rotation.x = 0.35 + swayA;
+    joints.clothSway.rotation.z = Math.sin(performance.now() * 0.003) * 0.06 + swayV * 0.4;
+  }
+
+  function applyLimbIK(prefix, isArm, target, weight) {
+    const root = isArm ? joints[`sh${prefix}`] : joints[`hip${prefix}`];
+    const mid = isArm ? joints[`el${prefix}`] : joints[`knee${prefix}`];
+    const l1 = isArm ? dims.upper : dims.thigh;
+    const l2 = isArm ? dims.fore : dims.shin;
+    if (!root || !mid) return;
+    root.updateWorldMatrix(true, false);
+    root.matrixWorld.decompose(ik.root, ik.pq, ik.scl);
+    if (root.parent) root.parent.matrixWorld.decompose(ik.ppos, ik.pq, ik.scl);
+    ik.pqi.copy(ik.pq).invert();
+    ik.tgt.copy(target).sub(ik.root);
+    let d = ik.tgt.length();
+    const maxd = (l1 + l2) * 0.995, mind = Math.abs(l1 - l2) + 0.002;
+    if (!isFinite(d) || d < 1e-4) return;
+    d = Math.max(mind, Math.min(maxd, d));
+    ik.f.copy(ik.tgt).normalize();
+    const upperAngle = Math.acos(clampN((l1 * l1 + d * d - l2 * l2) / (2 * l1 * d)));
+    const elbowInterior = Math.acos(clampN((l1 * l1 + l2 * l2 - d * d) / (2 * l1 * l2)));
+    if (!isFinite(upperAngle) || !isFinite(elbowInterior)) return;
+    ik.axis.crossVectors(ik.f, UP_Z);
+    if (ik.axis.lengthSq() < 1e-5) ik.axis.set(1, 0, 0);
+    ik.axis.normalize();
+    const upWorld = ik.f.clone().applyAxisAngle(ik.axis, upperAngle);
+    const upLocal = upWorld.applyQuaternion(ik.pqi).normalize();
+    ik.q.setFromUnitVectors(ik.up, upLocal);
+    root.quaternion.slerp(ik.q, weight);
+    const bend = (isArm ? 1 : -1) * (Math.PI - elbowInterior);
+    mid.rotation.x += (bend - mid.rotation.x) * weight;
+  }
+
   function update(dt, ctx) {
     const { actor, game, t, targetX, faceSign } = ctx;
     const dtSec = Math.min(0.05, dt / 1000);
@@ -1073,6 +1269,8 @@ export function createRig(char, side) {
 
     if (sequence) {
       updateSequence(dt, Math.max(dtSec, 0.012));
+      updateFace(actor, dt);
+      updateHands(actor, dt);
       updateGlow(actor, t);
       return;
     }
@@ -1097,9 +1295,20 @@ export function createRig(char, side) {
     let goal;
     let rate = 6.5;
 
-    if (actor.koed || (actor.downTime > 0 && actor.downTime > 380)) {
+    if (actor.koed) {
+      if (!collapse) collapse = { y: 0.95, vy: 1.0, drift: 0 };
+      collapse.vy -= 6.5 * dtSec;
+      collapse.y += collapse.vy * dtSec;
+      if (collapse.y <= 0) { collapse.y = 0; collapse.vy *= -0.22; }
+      collapse.drift += (faceSign > 0 ? -1 : 1) * 0.4 * dtSec * (collapse.y > 0 ? 1 : 0);
       goal = composePose(lying);
-      rate = actor.koed ? 5 : 9;
+      goal.root[1] += collapse.y * 0.55;
+      goal.root[2] += collapse.drift;
+      rate = collapse.y > 0.05 ? 12 : 6;
+    } else if (actor.downTime > 0 && actor.downTime > 380) {
+      collapse = null;
+      goal = composePose(lying);
+      rate = 9;
     } else if (actor.downTime > 0) {
       goal = composePose(stanceBase, RISE);
       rate = 8;
@@ -1154,6 +1363,13 @@ export function createRig(char, side) {
       goal.root[1] += Math.abs(Math.sin(walkPhase)) * 0.012;
     }
 
+    // Foot-flatten: soles stay parallel to the floor on the non-kicking leg.
+    if (actor.downTime <= 0 && !actor.koed && actor.staggerTime <= 0) {
+      const kickSide = actor.current && (actor.current.limb === "RL" ? "R" : actor.current.limb === "LL" ? "L" : null);
+      if (kickSide !== "L") goal.ankL[0] = -(goal.hipL[0] + goal.kneeL[0]) * 0.55 + 0.04;
+      if (kickSide !== "R") goal.ankR[0] = -(goal.hipR[0] + goal.kneeR[0]) * 0.55 + 0.04;
+    }
+
     if (reaction) {
       reaction.time -= dt;
       if (reaction.time <= 0) reaction = null;
@@ -1181,12 +1397,43 @@ export function createRig(char, side) {
     for (let i = 0; i < 6; i++) pose.root[i] += (goal.root[i] - pose.root[i]) * k;
     pushPose();
 
-    if (joints.clothSway) {
-      joints.clothSway.rotation.x = 0.35 + Math.sin(t * 0.004 + actor.sway) * 0.12 + speed * 6;
-      joints.clothSway.rotation.z = Math.sin(t * 0.0031) * 0.08;
+    // Two-bone IK seats the active strike on the target, blended over the FK form.
+    if (ctx.aim && actor.current && actor.downTime <= 0 && !actor.koed) {
+      const cur = actor.current;
+      const prog = (actor.phaseTime - cur.startup) / Math.max(1, cur.active);
+      if (prog > 0 && prog < 1) {
+        const w = 0.55 * Math.sin(prog * Math.PI);
+        poseRoot.updateWorldMatrix(true, false);
+        try {
+          if (cur.limb === "LH") applyLimbIK("L", true, ctx.aim, w);
+          else if (cur.limb === "RH" || cur.limb === "BR") applyLimbIK("R", true, ctx.aim, w);
+          else if (cur.limb === "LL") applyLimbIK("L", false, ctx.aim, w);
+          else if (cur.limb === "RL") applyLimbIK("R", false, ctx.aim, w);
+        } catch (e) { /* IK never breaks the frame */ }
+      }
     }
 
+    const hp = Number.isFinite(actor.hp) ? actor.hp : 100;
+    const dmgTarget = Math.max(0, Math.min(1, 1 - hp / 100));
+    damage += (dmgTarget - damage) * Math.min(1, dtSec * 2);
+    if (!Number.isFinite(damage)) damage = 0;
+    applyDamage(actor, t);
+
+    updateFace(actor, dt);
+    updateHands(actor, dt);
+    updateSecondary(dt, dtSec, drawX);
     updateGlow(actor, t);
+  }
+
+  const _bruise = new THREE.Color(0x6a2a3a);
+  function applyDamage(actor, t) {
+    const sweat = Math.min(1, damage * 0.8 + (actor.hitPulse / 240) * 0.4);
+    for (const m of skinMats) {
+      if (!m.userData.baseColor) continue;
+      m.color.copy(m.userData.baseColor).lerp(_bruise, damage * 0.28);
+      m.roughness = m.userData.baseRough * (1 - sweat * 0.5);
+      m.envMapIntensity = 0.36 + sweat * 0.5;
+    }
   }
 
   function updateGlow(actor, t) {
@@ -1226,6 +1473,10 @@ export function createRig(char, side) {
     get x() { return currentX; }
   };
 }
+
+const UP_Z = new THREE.Vector3(0, 0, 1);
+
+function clampN(x) { return Math.max(-1, Math.min(1, x)); }
 
 function easeInOut(t) {
   return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;

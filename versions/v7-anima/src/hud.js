@@ -7,10 +7,14 @@ const $ = id => document.getElementById(id);
 
 const MODES = [
   { id: "vsai", name: "VS Rival", blurb: "you against the persona AI" },
+  { id: "arcade", name: "Arcade", blurb: "story ladder with intro & ending" },
   { id: "pvp", name: "VS Human", blurb: "two fighters, one keyboard" },
+  { id: "training", name: "Training", blurb: "frame data, combo counter, no clock pressure" },
   { id: "spectate", name: "Spectate", blurb: "two AIs, you watch the doctrine" },
-  { id: "gauntlet", name: "Gauntlet", blurb: "one-round ladder vs all seven" }
+  { id: "gauntlet", name: "Gauntlet", blurb: "one-round ladder vs all eight" }
 ];
+
+const SOLO_PICK = new Set(["gauntlet", "arcade"]);
 
 export function createHud() {
   const el = {
@@ -35,6 +39,11 @@ export function createHud() {
     deckTitle: $("deckTitle"),
     camButton: $("camButton"),
     openCreator: $("openCreator"),
+    optionsButton: $("optionsButton"),
+    watchReplayButton: $("watchReplayButton"),
+    shareReplayButton: $("shareReplayButton"),
+    ghostButton: $("ghostButton"),
+    toastEl: $("toast"),
     keysGrid: document.querySelector(".keysGrid"),
     flashLayer: $("flashLayer"),
     eventLog: $("eventLog")
@@ -128,7 +137,7 @@ export function createHud() {
   }
 
   function needsRival() {
-    return select.mode !== "gauntlet";
+    return !SOLO_PICK.has(select.mode);
   }
 
   function pickCharacter(id) {
@@ -192,6 +201,25 @@ export function createHud() {
 
   function showSelect(visible) {
     el.selectOverlay.classList.toggle("hidden", !visible);
+    if (visible) showReplayActions(false);
+  }
+
+  function currentPicks() {
+    return select.pickP ? { p: select.pickP, e: select.pickE || select.pickP } : null;
+  }
+
+  function showReplayActions(on) {
+    if (el.watchReplayButton) el.watchReplayButton.hidden = !on;
+    if (el.shareReplayButton) el.shareReplayButton.hidden = !on;
+  }
+
+  let toastTimer = null;
+  function toast(msg) {
+    if (!el.toastEl) return;
+    el.toastEl.textContent = msg;
+    el.toastEl.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.toastEl.classList.remove("show"), 2200);
   }
 
   // ---- fight HUD --------------------------------------------------------------
@@ -317,6 +345,7 @@ export function createHud() {
     const showButtons = game.banner.button === true;
     el.rematchButton.hidden = !showButtons;
     el.changeButton.hidden = !showButtons;
+    if (!showButtons) showReplayActions(false);
     if (game.mode !== "matchOver") el.matchStats.innerHTML = "";
   }
 
@@ -370,6 +399,6 @@ export function createHud() {
   return {
     el, buildSelect, showSelect, pickByIndex, randomRival, confirmSelect,
     bindFighters, update, pushEvent, superFlash, showStats,
-    rebuildRoster, setCameraMode
+    rebuildRoster, setCameraMode, showReplayActions, toast, currentPicks
   };
 }

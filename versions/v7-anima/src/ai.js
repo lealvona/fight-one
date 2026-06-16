@@ -28,6 +28,7 @@ const PERSONA_BIAS = {
 // human opponent who has stopped playing.
 export function aiUpdate(combat, dt, now, side = "enemy", mods = null, respectIdle = true) {
   const { game, actors } = combat;
+  const rnd = combat.rng || Math.random;
   if (game.mode !== "fight" || game.roundLocked) return;
 
   game.aiClocks ??= { player: 700, enemy: 700 };
@@ -51,15 +52,15 @@ export function aiUpdate(combat, dt, now, side = "enemy", mods = null, respectId
     const idleMs = now - game.lastPlayerIntent;
     if (idleMs > 2600 && !foe.queue.length && !foe.current) {
       game.aiClocks[side] = 430;
-      if (self.queue.length === 0 && !self.current && Math.random() < 0.2) {
-        combat.intent(side, weightedPick({ a: 2, s: 1, j: 1 }), now);
+      if (self.queue.length === 0 && !self.current && rnd() < 0.2) {
+        combat.intent(side, weightedPick({ a: 2, s: 1, j: 1 }, rnd), now);
       }
       return;
     }
   }
 
   // Signature art when flowing and the moment is right.
-  if (self.flowState && game.range < 0.62 && foe.downTime <= 0 && Math.random() < 0.35) {
+  if (self.flowState && game.range < 0.62 && foe.downTime <= 0 && rnd() < 0.35) {
     combat.intent(side, "g", now);
     game.aiClocks[side] = baseDelay(persona, foe.tempo) + 200;
     return;
@@ -68,7 +69,7 @@ export function aiUpdate(combat, dt, now, side = "enemy", mods = null, respectId
   const seen = foe.queue[0] || foe.current;
   let table;
   if (!seen) table = { ...RESPONSES.none };
-  else if (Math.random() < persona.readSkill) table = { ...(RESPONSES[seen.family] || RESPONSES.none) };
+  else if (rnd() < persona.readSkill) table = { ...(RESPONSES[seen.family] || RESPONSES.none) };
   else table = { ...RESPONSES.none };
 
   const bias = PERSONA_BIAS[persona.persona] || {};
@@ -99,19 +100,19 @@ export function aiUpdate(combat, dt, now, side = "enemy", mods = null, respectId
     return;
   }
 
-  combat.intent(side, weightedPick(table), now);
+  combat.intent(side, weightedPick(table, rnd), now);
 
   // Phrasing: humans fight in phrases, not metronomes. Commit 2-3 beats in
   // close rhythm, then take a breath whose length depends on temperament.
   game.aiPhrase ??= { player: 0, enemy: 0 };
   if (game.aiPhrase[side] > 0) {
     game.aiPhrase[side] -= 1;
-    game.aiClocks[side] = 240 + Math.random() * 200; // inside the phrase: tight
-  } else if (Math.random() < 0.3 + persona.aggression * 0.35) {
-    game.aiPhrase[side] = 1 + (Math.random() < persona.aggression ? 1 : 0);
-    game.aiClocks[side] = 260 + Math.random() * 200;
+    game.aiClocks[side] = 240 + rnd() * 200; // inside the phrase: tight
+  } else if (rnd() < 0.3 + persona.aggression * 0.35) {
+    game.aiPhrase[side] = 1 + (rnd() < persona.aggression ? 1 : 0);
+    game.aiClocks[side] = 260 + rnd() * 200;
   } else {
-    game.aiClocks[side] = baseDelay(persona, foe.tempo) * (1.15 + Math.random() * 0.5); // the breath
+    game.aiClocks[side] = baseDelay(persona, foe.tempo) * (1.15 + rnd() * 0.5); // the breath
   }
 }
 
@@ -120,11 +121,11 @@ function baseDelay(persona, foeTempo) {
   return base - Math.min(240, foeTempo * 180);
 }
 
-function weightedPick(table) {
+function weightedPick(table, rnd = Math.random) {
   const entries = Object.entries(table);
   let total = 0;
   for (const [, w] of entries) total += w;
-  let roll = Math.random() * total;
+  let roll = rnd() * total;
   for (const [key, w] of entries) {
     roll -= w;
     if (roll <= 0) return key;
