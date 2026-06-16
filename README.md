@@ -16,7 +16,8 @@ screenshots, and play links.
 
 | Version | Play at | What it is |
 | --- | --- | --- |
-| **v6 - Ironflow Kata** (latest) | `/versions/v6-kata/` | Skinned organic bodies, exact technique execution and reception, reach-solved contact |
+| **v7 - Ironflow Anima** (latest) | `/versions/v7-anima/` | Living bodies (faces, hands, IK, collapses) + a full game: arcade, training, audio, options, replays |
+| **v6 - Ironflow Kata** | `/versions/v6-kata/` | Skinned organic bodies, exact technique execution and reception, reach-solved contact |
 | **v5 - Ironflow Vérité** | `/versions/v5-verite/` | The realism cut: image-based lighting, discipline-true biomechanics, contact that lands, phrased rhythm |
 | **v4 - Ironflow Impact** | `/versions/v4-impact/` | Paired two-body move choreography, over-shoulder camera, humanoid rigs v2, create-a-fighter |
 | **v3 - Ironflow Apex** | `/versions/v3-apex/` | Real-discipline movesets with cinema supers, 8 fighters, 3 stages, 4 modes |
@@ -31,6 +32,35 @@ skips the select screen (`p`/`e` fighter ids, `stage` crucible/helipad/shrine,
 The whole thing is static files + one tiny server (telemetry only), so it can be
 hosted anywhere static - e.g. enable GitHub Pages on this repo (Settings → Pages →
 deploy from branch, root) and the hub works as-is; telemetry simply no-ops.
+
+## v7 - Ironflow Anima
+
+The body comes alive, and the engine becomes a game. v7 folds three planned
+versions into one.
+
+**Look alive (Anima).** Expressive faces (eyes track the opponent, blinks,
+brow/jaw/mouth emotion, a wince on impact, a kiai grimace on the strike, eyes
+shut on KO); articulated hands that clench to a fist for strikes and open for
+palms/shells/clinches; normal-mapped skin (muscle striation) and cloth (weave),
+plus dynamic damage - sweat sheen and bruising that build as the round wears on;
+verlet-simulated hair, ponytails and scarves that swing and settle.
+
+**Move by physics (Gravity).** Two-bone IK seats the striking limb on the
+opponent's body, blended over the authored form so the technique lands exactly -
+no air gap. Foot-flatten keeps soles planted. A momentum-driven KO collapse
+falls under gravity, drifts off the blow, and settles with weight.
+
+**Play it (Saga).** Arcade/story ladder with opening title card, rival taunts
+and an ending; Training mode (move list with real frame data, live combo
+counter, range/whiff readout, startup/active/recovery phase bars); real audio
+(adaptive per-stage music, crowd that swells on big hits, per-fighter kiai, a
+spoken announcer); Options (master/music/effects/crowd volumes, quality tiers,
+accessibility: reduced motion / high-contrast / large UI, rebindable P1 keys -
+all persisted); and replays/ghosts - every match records the input timeline with
+its RNG seed, so you can watch it back, copy a share code, or race your best run.
+
+Press **O** for Options anywhere. Everything stays procedural - no model,
+texture, or audio assets; the announcer uses the browser's speech synthesis.
 
 ## v6 - Ironflow Kata
 
@@ -190,7 +220,8 @@ names - and their super names while you're flowing.
 - `versions/v3-apex/` - frozen v3 (real techniques + cinema supers).
 - `versions/v4-impact/` - frozen v4 (performed moves, OTS camera, the Forge).
 - `versions/v5-verite/` - frozen v5 (the realism cut).
-- `versions/v6-kata/` - current: `src/{data,combat,ai,rig,stage,hud,audio,sequences,creator,main}.js`.
+- `versions/v6-kata/` - frozen v6 (skinned bodies, exact forms).
+- `versions/v7-anima/` - current: adds `src/{story,training,menu,replay}.js` to the engine modules.
 - `vendor/three.module.min.js` - Three.js r160 (MIT, license alongside), shared by all versions.
 - `assets/training-room-stage.png` - original arena plate (v1 backdrop, select screens, Crucible matte).
 - `assets/shots/` - archive screenshots used by the hub.
