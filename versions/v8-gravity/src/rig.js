@@ -977,6 +977,7 @@ export function createRig(char, side) {
   let stepCd = 0;
   let comShift = 0;       // weight-shift onto the support leg
   const _foot = new THREE.Vector3();
+  let ragdoll = null;     // verlet particle skeleton, active on KO
   const ik = {
     root: new THREE.Vector3(), tgt: new THREE.Vector3(), ppos: new THREE.Vector3(),
     pq: new THREE.Quaternion(), pqi: new THREE.Quaternion(), scl: new THREE.Vector3(),
@@ -1105,7 +1106,7 @@ export function createRig(char, side) {
     } else if (type === "defeated") {
       defeated = true; celebrate = false;
     } else if (type === "reset") {
-      celebrate = false; defeated = false; reaction = null; sequence = null; lunge = null; collapse = null;
+      celebrate = false; defeated = false; reaction = null; sequence = null; lunge = null; collapse = null; ragdoll = null;
     }
   }
 
@@ -1267,10 +1268,110 @@ export function createRig(char, side) {
     mid.rotation.x += (bend - mid.rotation.x) * weight;
   }
 
+  // ---- Gravity: a real verlet-constraint ragdoll for the KO collapse --------
+  const RD_LINKS = [
+    ["hips", "chest"], ["chest", "head"],
+    ["chest", "elL"], ["elL", "haL"], ["chest", "elR"], ["elR", "haR"],
+    ["hips", "knL"], ["knL", "ftL"], ["hips", "knR"], ["knR", "ftR"]
+  ];
+  const RD_NODES = ["hips", "chest", "head", "elL", "haL", "elR", "haR", "knL", "ftL", "knR", "ftR"];
+  const RD_SRC = { hips: "hipsRef", chest: "chest", head: "head", elL: "elL", haL: "wrL", elR: "elR", haR: "wrR", knL: "kneeL", ftL: "ankL", knR: "kneeR", ftR: "ankR" };
+
+  function initRagdoll(faceSign) {
+    group.updateMatrixWorld(true);
+    const P = {}, prev = {}, rest = {};
+    const tmp = new THREE.Vector3();
+    for (const n of RD_NODES) {
+      const src = joints[RD_SRC[n]] || joints.chest;
+      src.getWorldPosition(tmp);
+      P[n] = tmp.clone();
+      prev[n] = tmp.clone();
+    }
+    for (const [a, b] of RD_LINKS) rest[a + b] = P[a].distanceTo(P[b]);
+    const back = (faceSign > 0 ? -1 : 1);
+    const kick = (n, vx, vy) => { prev[n].x -= vx; prev[n].y -= vy; };
+    for (const n of RD_NODES) kick(n, back * 0.05, 0.02);
+    kick("head", back * 0.04, 0.05); kick("chest", back * 0.03, 0.04);
+    ragdoll = { P, prev, rest, baseY: group.position.y, failed: false };
+  }
+
+  function stepRagdoll(dt) {
+    const rd = ragdoll;
+    const dtSec = Math.min(0.04, dt / 1000);
+    const g = 9.0 * dtSec * dtSec;
+    const tmp = new THREE.Vector3();
+    for (const n of RD_NODES) {
+      const p = rd.P[n], q = rd.prev[n];
+      tmp.copy(p);
+      p.x += (p.x - q.x) * 0.96;
+      p.y += (p.y - q.y) * 0.96 - g;
+      p.z += (p.z - q.z) * 0.96;
+      q.copy(tmp);
+      const floor = rd.baseY + (n === "head" ? 0.12 : (n === "chest" || n === "hips") ? 0.14 : 0.05);
+      if (p.y < floor) { p.y = floor; q.y = p.y + (q.y - p.y) * 0.3; q.x += (p.x - q.x) * 0.25; }
+    }
+    for (let it = 0; it < 6; it++) {
+      for (const [a, b] of RD_LINKS) {
+        const pa = rd.P[a], pb = rd.P[b];
+        tmp.subVectors(pb, pa);
+        const d = tmp.length() || 1e-4;
+        const diff = (d - rd.rest[a + b]) / d * 0.5;
+        tmp.multiplyScalar(diff);
+        pa.add(tmp); pb.sub(tmp);
+      }
+    }
+    for (const n of RD_NODES) if (!Number.isFinite(rd.P[n].x) || !Number.isFinite(rd.P[n].y)) rd.failed = true;
+  }
+
+  const _rdParent = new THREE.Quaternion(), _rdScale = new THREE.Vector3(), _rdPos = new THREE.Vector3(), _rdDir = new THREE.Vector3(), _rdLocal = new THREE.Vector3(), _rdQ = new THREE.Quaternion();
+  const RD_DOWN = new THREE.Vector3(0, -1, 0);
+  function aimBone(bone, fromW, toW) {
+    if (!bone || !bone.parent) return;
+    bone.parent.updateWorldMatrix(true, false);
+    bone.parent.matrixWorld.decompose(_rdPos, _rdParent, _rdScale);
+    _rdDir.subVectors(toW, fromW);
+    if (_rdDir.lengthSq() < 1e-6) return;
+    _rdDir.normalize();
+    _rdLocal.copy(_rdDir).applyQuaternion(_rdParent.invert());
+    _rdQ.setFromUnitVectors(RD_DOWN, _rdLocal);
+    bone.quaternion.copy(_rdQ);
+  }
+
+  function applyRagdoll() {
+    const rd = ragdoll;
+    if (rd.failed) { applyPoseImmediate(composePose(lying)); return; }
+    group.position.x = rd.P.hips.x;
+    group.position.z = rd.P.hips.z;
+    group.position.y = rd.P.hips.y - dims.hipY;
+    poseRoot.position.set(0, 0, 0);
+    poseRoot.rotation.set(0, 0, 0);
+    group.updateMatrixWorld(true);
+    aimBone(joints.spine, rd.P.hips, rd.P.chest);
+    aimBone(joints.neck, rd.P.chest, rd.P.head);
+    aimBone(joints.shL, rd.P.chest, rd.P.elL); aimBone(joints.elL, rd.P.elL, rd.P.haL);
+    aimBone(joints.shR, rd.P.chest, rd.P.elR); aimBone(joints.elR, rd.P.elR, rd.P.haR);
+    aimBone(joints.hipL, rd.P.hips, rd.P.knL); aimBone(joints.kneeL, rd.P.knL, rd.P.ftL);
+    aimBone(joints.hipR, rd.P.hips, rd.P.knR); aimBone(joints.kneeR, rd.P.knR, rd.P.ftR);
+  }
+
   function update(dt, ctx) {
     const { actor, game, t, targetX, faceSign } = ctx;
     const dtSec = Math.min(0.05, dt / 1000);
     group.rotation.y = faceSign > 0 ? Math.PI / 2 : -Math.PI / 2;
+
+    if (actor.koed) {
+      try {
+        if (!ragdoll) initRagdoll(faceSign);
+        stepRagdoll(dt);
+        applyRagdoll();
+      } catch (e) { applyPoseImmediate(composePose(lying)); }
+      updateFace(actor, dt);
+      updateHands(actor, dt);
+      updateGlow(actor, t);
+      return;
+    } else if (ragdoll) {
+      ragdoll = null;
+    }
 
     if (sequence) {
       updateSequence(dt, Math.max(dtSec, 0.012));
@@ -1300,18 +1401,7 @@ export function createRig(char, side) {
     let goal;
     let rate = 6.5;
 
-    if (actor.koed) {
-      if (!collapse) collapse = { y: 0.95, vy: 1.0, drift: 0 };
-      collapse.vy -= 6.5 * dtSec;
-      collapse.y += collapse.vy * dtSec;
-      if (collapse.y <= 0) { collapse.y = 0; collapse.vy *= -0.22; }
-      collapse.drift += (faceSign > 0 ? -1 : 1) * 0.4 * dtSec * (collapse.y > 0 ? 1 : 0);
-      goal = composePose(lying);
-      goal.root[1] += collapse.y * 0.55;
-      goal.root[2] += collapse.drift;
-      rate = collapse.y > 0.05 ? 12 : 6;
-    } else if (actor.downTime > 0 && actor.downTime > 380) {
-      collapse = null;
+    if (actor.downTime > 0 && actor.downTime > 380) {
       goal = composePose(lying);
       rate = 9;
     } else if (actor.downTime > 0) {
