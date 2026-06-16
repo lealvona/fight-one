@@ -1147,6 +1147,7 @@ export function createRig(char, side) {
       defeated = true; celebrate = false;
     } else if (type === "reset") {
       celebrate = false; defeated = false; reaction = null; sequence = null; lunge = null; collapse = null; ragdoll = null;
+      group.position.y = 0; group.position.z = 0; feetWX = null; stepping = null;
     }
   }
 
@@ -1411,7 +1412,13 @@ export function createRig(char, side) {
       return;
     } else if (ragdoll) {
       ragdoll = null;
+      group.position.y = 0;
+      group.position.z = 0;
+      feetWX = null;
+      stepping = null;
     }
+    // Safety: outside the KO ragdoll the body never sits below the floor.
+    if (group.position.y !== 0) group.position.y = 0;
 
     if (sequence) {
       updateSequence(dt, Math.max(dtSec, 0.012));
@@ -1500,15 +1507,15 @@ export function createRig(char, side) {
         const dL = drawX - feetWX.L, dR = drawX - feetWX.R;
         const far = Math.abs(dL) >= Math.abs(dR) ? "L" : "R";
         const drift = far === "L" ? dL : dR;
-        if (Math.abs(drift) > 0.16 && far !== kickSide) {
-          stepping = { side: far, from: feetWX[far], to: drawX + Math.sign(drift) * 0.1, t: 0, dur: 190 };
+        if (Math.abs(drift) > 0.1 && far !== kickSide) {
+          stepping = { side: far, from: feetWX[far], to: drawX, t: 0, dur: 180 };
         }
       }
       if (stepping) {
         stepping.t += dt;
         const sp = Math.min(1, stepping.t / stepping.dur);
         feetWX[stepping.side] = stepping.from + (stepping.to - stepping.from) * easeInOut(sp);
-        if (sp >= 1) { stepping = null; stepCd = 110; }
+        if (sp >= 1) { stepping = null; stepCd = 70; }
       }
       // Weight shift onto whichever foot is grounded; small torso lean + dip.
       const support = stepping ? (stepping.side === "L" ? "R" : "L") : null;
@@ -1572,12 +1579,17 @@ export function createRig(char, side) {
         if (sp === kickSide) continue;
         const ank = joints[`ank${sp}`];
         if (!ank) continue;
+        const active = stepping && stepping.side === sp;
+        const diff = drawX - feetWX[sp];
+        // Idle: let the foot ride with the body so it never reads as "locked";
+        // the FK stance poses it naturally. Only IK-pin once it actually drifts.
+        if (!active && Math.abs(diff) < 0.05) { feetWX[sp] = drawX; continue; }
         ank.updateWorldMatrix(true, false);
-        _foot.setFromMatrixPosition(ank.matrixWorld);
-        const lift = (stepping && stepping.side === sp) ? Math.sin(Math.min(1, stepping.t / stepping.dur) * Math.PI) * 0.13 : 0;
+        _foot.setFromMatrixPosition(ank.matrixWorld); // keep the FK foot height - never sink
+        const lift = active ? Math.sin(Math.min(1, stepping.t / stepping.dur) * Math.PI) * 0.12 : 0;
         _foot.x = feetWX[sp];
-        _foot.y = group.position.y + H * 0.055 + lift;
-        try { applyLimbIK(sp, false, _foot, 0.55); } catch (e) { /* never break */ }
+        _foot.y += lift;
+        try { applyLimbIK(sp, false, _foot, 0.45); } catch (e) { /* never break */ }
         const hipB = joints[`hip${sp}`], kneeB = joints[`knee${sp}`];
         if (hipB && kneeB) joints[`ank${sp}`].rotation.x = -(hipB.rotation.x + kneeB.rotation.x) * 0.5 + 0.04 + lift * 1.4;
       }
