@@ -1,0 +1,790 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ironflow Anima</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --ink: #f4efe4;
+      --muted: #aeb6bb;
+      --red: #e45745;
+      --gold: #f1bd4b;
+      --cyan: #47c7d9;
+      --green: #75c267;
+      --violet: #b78cff;
+      --panel: rgba(8, 13, 16, 0.72);
+      --line: rgba(244, 239, 228, 0.16);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      overflow: hidden;
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--ink);
+      background: #07090a;
+    }
+
+    canvas#game {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+    }
+
+    .hud {
+      position: fixed;
+      inset: 10px 14px auto;
+      display: grid;
+      grid-template-columns: minmax(230px, 370px) minmax(220px, 320px) minmax(230px, 370px);
+      gap: 10px;
+      pointer-events: none;
+      z-index: 2;
+    }
+
+    .plate {
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(8, 13, 16, 0.70), rgba(5, 8, 10, 0.58));
+      backdrop-filter: blur(14px) saturate(1.1);
+      border-radius: 8px;
+      box-shadow: 0 18px 48px rgba(0, 0, 0, 0.34), inset 0 1px rgba(255,255,255,0.06);
+    }
+
+    .fighterPanel {
+      padding: 10px;
+      min-width: 0;
+      display: grid;
+      grid-template-columns: 44px 1fr;
+      gap: 10px;
+    }
+
+    .portrait {
+      width: 44px;
+      height: 44px;
+      display: grid;
+      place-items: center;
+      border-radius: 7px;
+      border: 1px solid var(--char, var(--cyan));
+      color: var(--char, var(--cyan));
+      background: rgba(255,255,255,0.04);
+      font-weight: 900;
+      font-size: 15px;
+      letter-spacing: 0.04em;
+    }
+
+    .fighterInfo { min-width: 0; }
+
+    .fighterName {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .fighterName b { color: var(--ink); font-weight: 850; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .fighterName span { color: var(--muted); white-space: nowrap; }
+
+    .epithet {
+      margin-top: 1px;
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      opacity: 0.85;
+    }
+
+    .bars { display: grid; gap: 4px; margin-top: 6px; }
+
+    .bar {
+      height: 8px;
+      border: 1px solid rgba(255,255,255,0.14);
+      background: rgba(0,0,0,0.28);
+      border-radius: 999px;
+      overflow: hidden;
+    }
+
+    .fill {
+      width: 100%;
+      height: 100%;
+      background: var(--green);
+      transform-origin: left center;
+    }
+
+    .posture .fill { background: var(--gold); }
+    .enemy .health .fill { background: var(--red); }
+    .flow { height: 6px; }
+    .flow .fill { background: var(--violet); }
+    .flow.flowing { border-color: var(--violet); box-shadow: 0 0 10px rgba(183,140,255,0.55); }
+    .flow.flowing .fill { background: linear-gradient(90deg, var(--violet), #e6d4ff); }
+
+    .queue {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 4px;
+      margin-top: 6px;
+    }
+
+    .slot {
+      min-height: 20px;
+      display: grid;
+      place-items: center;
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 5px;
+      background: rgba(255,255,255,0.05);
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 750;
+    }
+
+    .slot.live {
+      color: #0b1012;
+      background: var(--gold);
+      border-color: transparent;
+    }
+
+    .centerPanel { padding: 10px; text-align: center; }
+
+    .range {
+      font-size: 12px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .callout {
+      margin-top: 6px;
+      min-height: 24px;
+      font-size: 17px;
+      font-weight: 850;
+      color: var(--ink);
+    }
+
+    .tempo {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 8px;
+      margin-top: 8px;
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    .scoreRow { display: flex; justify-content: center; gap: 6px; margin-top: 8px; }
+
+    .pip {
+      width: 9px;
+      height: 9px;
+      border: 1px solid rgba(255,255,255,0.28);
+      border-radius: 999px;
+      background: rgba(255,255,255,0.06);
+    }
+
+    .pip.on.player { background: var(--cyan); border-color: transparent; }
+    .pip.on.enemy { background: var(--red); border-color: transparent; }
+
+    .controls {
+      position: fixed;
+      left: 14px;
+      right: 14px;
+      bottom: 14px;
+      display: grid;
+      grid-template-columns: 1.15fr 0.95fr 0.85fr;
+      gap: 10px;
+      pointer-events: none;
+      z-index: 2;
+    }
+
+    .matrix, .keys, .telemetry { padding: 12px; }
+
+    .keysGrid {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 6px;
+      margin-top: 8px;
+      pointer-events: auto;
+    }
+
+    .key {
+      min-height: 38px;
+      display: grid;
+      place-items: center;
+      border: 1px solid rgba(255,255,255,0.13);
+      border-radius: 6px;
+      background: rgba(255,255,255,0.055);
+      font-size: 10px;
+      line-height: 1.12;
+      color: var(--muted);
+      text-align: center;
+      cursor: pointer;
+      user-select: none;
+      padding: 4px 2px;
+      transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
+    }
+
+    .key:active {
+      transform: translateY(1px);
+      border-color: rgba(241,189,75,0.7);
+      background: rgba(241,189,75,0.14);
+    }
+
+    .key b { display: block; color: var(--ink); font-size: 13px; }
+    .key i { display: block; font-style: normal; font-size: 9px; opacity: 0.9; }
+    .key.sig { border-color: rgba(183,140,255,0.5); }
+    .key.sig b { color: var(--violet); }
+
+    .sectionTitle {
+      font-size: 12px;
+      letter-spacing: 0.10em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .matrixRows {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 6px;
+      margin-top: 8px;
+    }
+
+    .rule {
+      min-height: 36px;
+      padding: 6px 7px;
+      border: 1px solid rgba(255,255,255,0.13);
+      border-radius: 6px;
+      background: rgba(255,255,255,0.055);
+      color: var(--muted);
+      font-size: 10px;
+      line-height: 1.25;
+    }
+
+    .rule b { display: block; color: var(--ink); font-size: 11px; }
+
+    .eventLog {
+      display: grid;
+      gap: 5px;
+      margin-top: 8px;
+      min-height: 84px;
+      max-height: 96px;
+      overflow: hidden;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 10px;
+      line-height: 1.2;
+      color: var(--muted);
+    }
+
+    .eventLine { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .eventLine b { color: var(--ink); font-weight: 800; }
+
+    .matchOverlay {
+      position: fixed;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      pointer-events: none;
+      z-index: 4;
+    }
+
+    .matchCard {
+      min-width: min(560px, calc(100vw - 28px));
+      padding: 24px 28px;
+      border: 1px solid rgba(244,239,228,0.18);
+      border-radius: 8px;
+      background: linear-gradient(180deg, rgba(4,8,10,0.84), rgba(4,6,7,0.68));
+      box-shadow: 0 28px 80px rgba(0,0,0,0.48), inset 0 1px rgba(255,255,255,0.08);
+      backdrop-filter: blur(16px);
+      text-align: center;
+    }
+
+    .matchEyebrow {
+      font-size: 12px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .matchTitle {
+      margin-top: 8px;
+      font-size: clamp(42px, 8vw, 92px);
+      line-height: 0.9;
+      font-weight: 950;
+      color: var(--ink);
+      text-transform: uppercase;
+    }
+
+    .matchSub { margin-top: 10px; color: var(--muted); font-size: 14px; }
+
+    .overlayButtons { display: flex; gap: 10px; justify-content: center; }
+
+    .startButton {
+      margin-top: 18px;
+      min-width: 170px;
+      min-height: 42px;
+      border: 1px solid rgba(241,189,75,0.52);
+      border-radius: 6px;
+      background: rgba(241,189,75,0.14);
+      color: var(--ink);
+      font-weight: 850;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      pointer-events: auto;
+      cursor: pointer;
+    }
+
+    .startButton.ghost {
+      border-color: rgba(244,239,228,0.3);
+      background: rgba(255,255,255,0.05);
+    }
+
+    .startButton:disabled { opacity: 0.4; cursor: default; }
+
+    .hidden { display: none !important; }
+
+    /* ---- character select ---- */
+    .selectOverlay {
+      position: fixed;
+      inset: 0;
+      z-index: 5;
+      display: grid;
+      place-items: center;
+      padding: 18px;
+      background:
+        linear-gradient(180deg, rgba(5,8,10,0.82), rgba(5,8,10,0.92)),
+        url("../../assets/training-room-stage.png") center / cover no-repeat;
+    }
+
+    .selectCard {
+      width: min(1060px, 100%);
+      max-height: calc(100vh - 36px);
+      overflow: auto;
+      padding: 22px 24px;
+      border: 1px solid rgba(244,239,228,0.18);
+      border-radius: 10px;
+      background: linear-gradient(180deg, rgba(4,8,10,0.78), rgba(4,6,7,0.66));
+      backdrop-filter: blur(18px);
+      box-shadow: 0 28px 80px rgba(0,0,0,0.5);
+    }
+
+    .selectEyebrow {
+      font-size: 12px;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .selectTitle {
+      margin-top: 6px;
+      font-size: clamp(30px, 4.6vw, 52px);
+      font-weight: 950;
+      text-transform: uppercase;
+      line-height: 0.95;
+    }
+
+    .selectTagline { margin-top: 6px; color: var(--muted); font-size: 13px; }
+
+    .selectGrid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 10px;
+      margin-top: 16px;
+    }
+
+    .charCard {
+      position: relative;
+      display: grid;
+      gap: 3px;
+      text-align: left;
+      padding: 12px 13px 11px;
+      border: 1px solid rgba(255,255,255,0.14);
+      border-radius: 8px;
+      background: rgba(255,255,255,0.045);
+      color: var(--ink);
+      cursor: pointer;
+      font: inherit;
+      transition: border-color 130ms ease, background 130ms ease, transform 130ms ease;
+    }
+
+    .charCard:hover { border-color: var(--char); transform: translateY(-1px); }
+    .charCard.pickedP { border-color: var(--cyan); box-shadow: 0 0 0 1px var(--cyan), 0 10px 30px rgba(71,199,217,0.16); }
+    .charCard.pickedE { border-color: var(--red); box-shadow: 0 0 0 1px var(--red), 0 10px 30px rgba(228,87,69,0.16); }
+    .charCard.pickedP.pickedE { box-shadow: 0 0 0 1px var(--cyan), 0 0 0 3px var(--red); }
+
+    .charIndex {
+      position: absolute;
+      top: 9px;
+      right: 11px;
+      font-size: 11px;
+      color: var(--muted);
+      font-weight: 800;
+    }
+
+    .charMonogram {
+      width: 40px;
+      height: 40px;
+      display: grid;
+      place-items: center;
+      border-radius: 7px;
+      border: 1px solid var(--char);
+      color: var(--char);
+      font-weight: 900;
+      letter-spacing: 0.04em;
+      margin-bottom: 4px;
+      background: rgba(0,0,0,0.25);
+    }
+
+    .charName { font-weight: 900; font-size: 15px; text-transform: uppercase; letter-spacing: 0.05em; }
+    .charEpithet { font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--char); }
+    .charStyle { font-size: 11px; color: var(--muted); margin-top: 3px; line-height: 1.35; }
+    .charHomage { font-size: 10px; color: var(--muted); opacity: 0.7; font-style: italic; }
+
+    .charTags { display: flex; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
+    .statPip { font-size: 9.5px; letter-spacing: 0.06em; color: var(--muted); font-family: ui-monospace, Menlo, monospace; }
+
+    .charPickTag {
+      position: absolute;
+      bottom: 9px;
+      right: 11px;
+      font-size: 10px;
+      font-weight: 900;
+      letter-spacing: 0.1em;
+      color: var(--gold);
+    }
+
+    .selectFooter {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-top: 16px;
+      flex-wrap: wrap;
+    }
+
+    #selectHint { color: var(--muted); font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; }
+
+    .selectButtons { display: flex; gap: 10px; }
+    .selectButtons .startButton { margin-top: 0; }
+
+    .filmLayer {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 2;
+      opacity: 0.5;
+      background-repeat: repeat;
+      mix-blend-mode: overlay;
+    }
+
+    .filmLayer::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse at 50% 42%, transparent 52%, rgba(2,4,6,0.42) 100%);
+    }
+
+    .flashLayer {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 3;
+      opacity: 0;
+      background: radial-gradient(circle at 50% 45%, var(--flash, #b78cff) 0%, transparent 62%);
+    }
+
+    .flashLayer.active { animation: superflash 620ms ease-out; }
+
+    @keyframes superflash {
+      0% { opacity: 0; }
+      18% { opacity: 0.55; }
+      100% { opacity: 0; }
+    }
+
+    .chipRow {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 12px;
+    }
+
+    .chip {
+      flex: 1 1 150px;
+      text-align: left;
+      padding: 8px 11px;
+      border: 1px solid rgba(255,255,255,0.14);
+      border-radius: 7px;
+      background: rgba(255,255,255,0.045);
+      color: var(--ink);
+      cursor: pointer;
+      font: inherit;
+      transition: border-color 130ms ease, background 130ms ease;
+    }
+
+    .chip b { display: block; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; }
+    .chip i { display: block; font-style: normal; font-size: 10px; color: var(--muted); margin-top: 2px; }
+    .chip.on { border-color: var(--gold); background: rgba(241,189,75,0.12); }
+    .chip:hover { border-color: rgba(244,239,228,0.4); }
+
+    .chipLabel {
+      margin-top: 14px;
+      font-size: 11px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .charDiscipline {
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--gold);
+      opacity: 0.85;
+    }
+
+    .keysGrid.flowing .key { border-color: rgba(183,140,255,0.55); background: rgba(183,140,255,0.1); }
+    .keysGrid.flowing .key b { color: var(--violet); }
+    .slot.super { border-color: var(--violet); color: var(--violet); }
+    .slot.super.live { background: var(--violet); color: #0b1012; }
+
+    .matchStats {
+      margin-top: 14px;
+      display: grid;
+      gap: 4px;
+      font-size: 12px;
+    }
+
+    .statRow {
+      display: grid;
+      grid-template-columns: 1.6fr 1fr 1fr;
+      gap: 8px;
+      color: var(--muted);
+    }
+
+    .statRow span:first-child { text-align: right; text-transform: uppercase; font-size: 10px; letter-spacing: 0.08em; align-self: center; }
+    .statRow span:not(:first-child) { color: var(--ink); font-weight: 800; }
+    .statRow.statHead span { color: var(--muted); font-weight: 600; font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; }
+
+    .camButton {
+      margin-top: 9px;
+      min-height: 26px;
+      padding: 3px 12px;
+      border: 1px solid rgba(244,239,228,0.25);
+      border-radius: 999px;
+      background: rgba(255,255,255,0.05);
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 850;
+      letter-spacing: 0.1em;
+      cursor: pointer;
+      pointer-events: auto;
+    }
+
+    .camButton.on { border-color: var(--cyan); color: var(--cyan); }
+
+    .creatorOverlay { z-index: 6; }
+    .creatorCard { width: min(960px, 100%); }
+
+    .creatorLayout {
+      display: grid;
+      grid-template-columns: 1.25fr 0.85fr;
+      gap: 18px;
+      margin-top: 14px;
+    }
+
+    .creatorForm {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 9px 14px;
+      align-content: start;
+    }
+
+    .cField { display: grid; gap: 4px; font-size: 11px; color: var(--muted); }
+    .cField > span { letter-spacing: 0.1em; text-transform: uppercase; font-size: 10px; }
+    .cField input[type="text"], .cField select {
+      font: inherit;
+      color: var(--ink);
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.16);
+      border-radius: 6px;
+      padding: 6px 8px;
+    }
+    .cField input[type="range"] { width: 100%; accent-color: var(--gold); }
+
+    .swatchRow { display: flex; gap: 5px; flex-wrap: wrap; }
+    .swatch {
+      width: 22px; height: 22px;
+      border-radius: 5px;
+      border: 1px solid rgba(255,255,255,0.25);
+      cursor: pointer;
+    }
+    .swatch.on { outline: 2px solid var(--gold); outline-offset: 1px; }
+
+    .cExtras { display: flex; flex-wrap: wrap; gap: 7px 12px; font-size: 11px; color: var(--ink); }
+    .cExtras label { display: inline-flex; gap: 5px; align-items: center; cursor: pointer; }
+    .cExtras input { accent-color: var(--gold); }
+
+    .creatorSide { display: grid; gap: 10px; align-content: start; justify-items: center; }
+    #creatorPreview {
+      width: 100%;
+      max-width: 340px;
+      aspect-ratio: 340 / 430;
+      border-radius: 8px;
+      border: 1px solid rgba(255,255,255,0.14);
+      background: #101418;
+    }
+    .creatorBudget { font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--gold); }
+    .creatorButtons { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+    .creatorButtons .startButton { margin-top: 0; min-width: 0; }
+
+    .charCard.customCard { border-style: dashed; }
+
+    @media (max-width: 900px) {
+      .creatorLayout { grid-template-columns: 1fr; }
+
+      .hud { grid-template-columns: 1fr 1fr; }
+      .centerPanel { display: none; }
+      .controls { grid-template-columns: 1fr; }
+      .matrix, .telemetry { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="game" aria-label="Ironflow Anima 3D fighting game"></canvas>
+
+  <div class="hud">
+    <section class="plate fighterPanel">
+      <div id="pPortrait" class="portrait">?</div>
+      <div class="fighterInfo">
+        <div class="fighterName"><b id="pName">Operator</b><span id="pState">ready</span></div>
+        <div id="pEpithet" class="epithet"></div>
+        <div class="bars">
+          <div class="bar health"><div id="pHealth" class="fill"></div></div>
+          <div class="bar posture"><div id="pPosture" class="fill"></div></div>
+          <div id="pFlowWrap" class="bar flow"><div id="pFlow" class="fill"></div></div>
+        </div>
+        <div id="pQueue" class="queue"></div>
+      </div>
+    </section>
+
+    <section class="plate centerPanel">
+      <div id="range" class="range">entry range</div>
+      <div id="callout" class="callout">Flow is the weapon</div>
+      <div class="tempo">
+        <span>your tempo <b id="pTempo">0.00</b></span>
+        <span>round <b id="roundInfo">-</b></span>
+        <span>rival tempo <b id="eTempo">0.00</b></span>
+      </div>
+      <div id="scoreRow" class="scoreRow"></div>
+      <button id="camButton" class="camButton" type="button">CAM: SIDE (C)</button>
+    </section>
+
+    <section class="plate fighterPanel enemy">
+      <div id="ePortrait" class="portrait">?</div>
+      <div class="fighterInfo">
+        <div class="fighterName"><b id="eName">Rival</b><span id="eState">reading</span></div>
+        <div id="eEpithet" class="epithet"></div>
+        <div class="bars">
+          <div class="bar health"><div id="eHealth" class="fill"></div></div>
+          <div class="bar posture"><div id="ePosture" class="fill"></div></div>
+          <div id="eFlowWrap" class="bar flow"><div id="eFlow" class="fill"></div></div>
+        </div>
+        <div id="eQueue" class="queue"></div>
+      </div>
+    </section>
+  </div>
+
+  <div class="controls">
+    <section class="plate keys">
+      <div id="deckTitle" class="sectionTitle">Nine-intent deck &middot; flow chains build the violet bar</div>
+      <div class="keysGrid">
+        <div class="key" data-key="j"><span><b>J</b><i>jab</i></span></div>
+        <div class="key" data-key="k"><span><b>K</b><i>cross</i></span></div>
+        <div class="key" data-key="u"><span><b>U</b><i>low kick</i></span></div>
+        <div class="key" data-key="i"><span><b>I</b><i>high kick</i></span></div>
+        <div class="key" data-key="a"><span><b>A</b><i>shell</i></span></div>
+        <div class="key" data-key="s"><span><b>S</b><i>redirect</i></span></div>
+        <div class="key" data-key="d"><span><b>D</b><i>clinch</i></span></div>
+        <div class="key" data-key="f"><span><b>F</b><i>shove</i></span></div>
+        <div class="key sig" data-key="g"><span><b>G</b><i>signature art</i></span></div>
+      </div>
+    </section>
+    <section class="plate matrix">
+      <div class="sectionTitle">Combat doctrine &middot; real techniques, mythic supers</div>
+      <div class="matrixRows">
+        <div class="rule"><b>Strike</b>stuffs Clinch</div>
+        <div class="rule"><b>Shell</b>absorbs Strike, bursts on just-guard</div>
+        <div class="rule"><b>Break</b>opens Shell, catches Redirect</div>
+        <div class="rule"><b>Clinch</b>swallows Break, grabs Shell</div>
+        <div class="rule"><b>Redirect</b>turns Strike, escapes Clinch &amp; Art</div>
+        <div class="rule"><b>Art</b>crushes all but a live Redirect</div>
+        <div class="rule"><b>Flow State</b>every technique becomes its film version</div>
+      </div>
+    </section>
+    <section class="plate telemetry">
+      <div class="sectionTitle">Live test log</div>
+      <div id="eventLog" class="eventLog"></div>
+    </section>
+  </div>
+
+  <div id="filmLayer" class="filmLayer"></div>
+
+  <div id="flashLayer" class="flashLayer"></div>
+
+  <div id="matchOverlay" class="matchOverlay hidden">
+    <section class="matchCard">
+      <div id="matchEyebrow" class="matchEyebrow">ironflow</div>
+      <div id="matchTitle" class="matchTitle"></div>
+      <div id="matchSub" class="matchSub"></div>
+      <div id="matchStats" class="matchStats"></div>
+      <div class="overlayButtons">
+        <button id="rematchButton" class="startButton" type="button" hidden>Run It Back</button>
+        <button id="changeButton" class="startButton ghost" type="button" hidden>Change Fighters</button>
+      </div>
+    </section>
+  </div>
+
+  <div id="selectOverlay" class="selectOverlay hidden">
+    <section class="selectCard">
+      <div class="selectEyebrow">ironflow anima &middot; version seven &middot; cadence engine</div>
+      <div class="selectTitle">Ironflow Anima</div>
+      <div class="selectTagline">The form is the truth: continuously-skinned organic bodies, techniques executed and received exactly as the disciplines teach them, and contact solved to the centimeter.</div>
+      <div class="chipLabel">Mode</div>
+      <div id="modeRow" class="chipRow"></div>
+      <div class="chipLabel">Stage</div>
+      <div id="stageRow" class="chipRow"></div>
+      <div class="chipLabel">Fighters</div>
+      <div id="selectGrid" class="selectGrid"></div>
+      <div class="selectFooter">
+        <span id="selectHint">Choose your fighter</span>
+        <div class="selectButtons">
+          <button id="openCreator" class="startButton ghost" type="button">Create Fighter</button>
+          <button id="selectRandom" class="startButton ghost" type="button">Roll Rival (R)</button>
+          <button id="selectConfirm" class="startButton" type="button" disabled>Enter the Crucible</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div id="creatorOverlay" class="selectOverlay creatorOverlay hidden">
+    <section class="selectCard creatorCard">
+      <div class="selectEyebrow">forge &middot; create your fighter</div>
+      <div class="selectTitle" style="font-size: clamp(24px, 3.4vw, 40px);">The Forge</div>
+      <div class="creatorLayout">
+        <form id="creatorForm" class="creatorForm" onsubmit="return false"></form>
+        <div class="creatorSide">
+          <canvas id="creatorPreview" width="340" height="430"></canvas>
+          <div id="creatorBudget" class="creatorBudget"></div>
+          <div class="creatorButtons">
+            <button id="creatorSave" class="startButton" type="button">Save Fighter</button>
+            <button id="creatorCancel" class="startButton ghost" type="button">Back</button>
+            <button id="creatorDelete" class="startButton ghost" type="button" hidden>Delete</button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>
