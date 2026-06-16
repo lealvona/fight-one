@@ -90,7 +90,7 @@
         }
         p.rig.update(dt, {
           actor: a, game: { mode: "fight", slowMo: 0, shake: 0 }, t: now,
-          targetX: p.rig.group.position.x, faceSign: 1
+          targetX: p.rig.group.position.x, faceSign: 1, display: true
         });
       }
       renderer.render(scene, camera);

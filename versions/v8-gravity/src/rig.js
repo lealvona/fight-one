@@ -1398,6 +1398,9 @@ export function createRig(char, side) {
   function update(dt, ctx) {
     const { actor, game, t, targetX, faceSign } = ctx;
     const dtSec = Math.min(0.05, dt / 1000);
+    // Display mode (turntable / creator preview): the rig may sit under a parent
+    // pivot, so world-space IK/physics would mis-target. Use pure FK there.
+    const display = !!ctx.display;
     group.rotation.y = faceSign > 0 ? Math.PI / 2 : -Math.PI / 2;
 
     if (actor.koed) {
@@ -1498,7 +1501,7 @@ export function createRig(char, side) {
 
     // Real footwork: feet hold their world position; the body steps to them.
     // (Leg IK plants them after pushPose; here we decide steps + weight shift.)
-    const groundOK = actor.downTime <= 0 && !actor.koed && actor.staggerTime <= 0 && !sequence;
+    const groundOK = actor.downTime <= 0 && !actor.koed && actor.staggerTime <= 0 && !sequence && !display;
     if (groundOK) {
       if (!feetWX) feetWX = { L: drawX, R: drawX };
       stepCd -= dt;
@@ -1555,7 +1558,7 @@ export function createRig(char, side) {
     pushPose();
 
     // Two-bone IK seats the active strike on the target, blended over the FK form.
-    if (ctx.aim && actor.current && actor.downTime <= 0 && !actor.koed) {
+    if (!display && ctx.aim && actor.current && actor.downTime <= 0 && !actor.koed) {
       const cur = actor.current;
       const prog = (actor.phaseTime - cur.startup) / Math.max(1, cur.active);
       if (prog > 0 && prog < 1) {
@@ -1572,7 +1575,7 @@ export function createRig(char, side) {
 
     // Plant feet in world space so they don't skate: leg IK holds each foot at
     // its planted world-x (lifting in an arc only while that foot is stepping).
-    if (feetWX && actor.downTime <= 0 && !actor.koed && actor.staggerTime <= 0 && !sequence) {
+    if (!display && feetWX && actor.downTime <= 0 && !actor.koed && actor.staggerTime <= 0 && !sequence) {
       const kickSide = actor.current && (actor.current.limb === "RL" ? "R" : actor.current.limb === "LL" ? "L" : null);
       poseRoot.updateWorldMatrix(true, false);
       for (const sp of ["L", "R"]) {
