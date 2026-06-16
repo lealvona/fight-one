@@ -306,7 +306,7 @@ export function initCreator({ onSaved }) {
           current: null, queue: [], phaseTime: 0, downTime: 0, staggerTime: 0,
           koed: false, hitPulse: 0, flowState: false, posture: 100, postureMax: 100, sway: 0
         },
-        game: { mode: "fight" }, t: now, targetX: 0, faceSign: 1
+        game: { mode: "fight" }, t: now, targetX: 0, faceSign: 1, display: true
       });
     }
     renderer.render(scene, camera);
