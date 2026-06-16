@@ -16,7 +16,8 @@ screenshots, and play links.
 
 | Version | Play at | What it is |
 | --- | --- | --- |
-| **v7 - Ironflow Anima** (latest) | `/versions/v7-anima/` | Living bodies (faces, hands, IK, collapses) + a full game: arcade, training, audio, options, replays |
+| **v8 - Ironflow Gravity** (latest) | `/versions/v8-gravity/` | The spec to the letter: real footwork, a true verlet ragdoll, a hitbox visualizer, multi-strand verlet, mobile |
+| **v7 - Ironflow Anima** | `/versions/v7-anima/` | Living bodies (faces, hands, IK, collapses) + a full game: arcade, training, audio, options, replays |
 | **v6 - Ironflow Kata** | `/versions/v6-kata/` | Skinned organic bodies, exact technique execution and reception, reach-solved contact |
 | **v5 - Ironflow Vérité** | `/versions/v5-verite/` | The realism cut: image-based lighting, discipline-true biomechanics, contact that lands, phrased rhythm |
 | **v4 - Ironflow Impact** | `/versions/v4-impact/` | Paired two-body move choreography, over-shoulder camera, humanoid rigs v2, create-a-fighter |
@@ -32,6 +33,29 @@ skips the select screen (`p`/`e` fighter ids, `stage` crucible/helipad/shrine,
 The whole thing is static files + one tiny server (telemetry only), so it can be
 hosted anywhere static - e.g. enable GitHub Pages on this repo (Settings → Pages →
 deploy from branch, root) and the hub works as-is; telemetry simply no-ops.
+
+## v8 - Ironflow Gravity
+
+Closes the five honest gaps from v7's audit - the spec, to the letter:
+
+- **Real footwork**: each foot holds its world position (leg IK), so a fighter
+  can lean and drift over a planted foot without skating; a step relocates the
+  trailing foot in an arc, and weight shifts onto the support leg. No more
+  sine-wave shuffle.
+- **True ragdoll KO**: a world-space verlet particle skeleton (hips/chest/head
+  plus the four two-segment limbs) seeds momentum off the finishing blow and
+  falls under gravity with distance constraints and floor collision; bones are
+  aimed along the particle segments. Fully finite-guarded with a lying-pose
+  fallback.
+- **Hitbox / reach visualizer**: Training shows a translucent strike volume at
+  the active limb, colored by phase (blue startup / red active / grey recovery),
+  next to the frame-data panel.
+- **Multi-strand verlet hair & cloth**: ponytails, scarves and headband tails
+  are real multi-segment verlet chains that whip and settle, dragged by the
+  anchor's motion - no more single-bone sway.
+- **Mobile / touch**: viewport hardened against double-tap zoom, `touch-action`
+  on every control, and a phone breakpoint that stacks the HUD and enlarges the
+  tap deck.
 
 ## v7 - Ironflow Anima
 
@@ -221,7 +245,8 @@ names - and their super names while you're flowing.
 - `versions/v4-impact/` - frozen v4 (performed moves, OTS camera, the Forge).
 - `versions/v5-verite/` - frozen v5 (the realism cut).
 - `versions/v6-kata/` - frozen v6 (skinned bodies, exact forms).
-- `versions/v7-anima/` - current: adds `src/{story,training,menu,replay}.js` to the engine modules.
+- `versions/v7-anima/` - frozen v7 (living bodies + full game layer).
+- `versions/v8-gravity/` - current: true footwork, verlet ragdoll, hitbox visualizer, multi-strand verlet, mobile.
 - `vendor/three.module.min.js` - Three.js r160 (MIT, license alongside), shared by all versions.
 - `assets/training-room-stage.png` - original arena plate (v1 backdrop, select screens, Crucible matte).
 - `assets/shots/` - archive screenshots used by the hub.
