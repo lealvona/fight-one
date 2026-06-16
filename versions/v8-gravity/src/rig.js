@@ -190,11 +190,17 @@ function pickReaction(move) {
   return HIT_REACTIONS.foldMid;
 }
 
+// Face-down sprawl. The trunk is pitched a hair past horizontal so the body
+// lies FLAT (not on a ramp); the dynamic ground-clamp in update() then rests
+// the lowest contact on the floor, so root[1] here is only a nudge. Limbs are
+// splayed out to the sides (kept near the spine plane) so nothing dangles far
+// below the torso and props the body up.
 export const LYING = {
-  spine: Z3, chest: [-0.1, 0, 0], neck: [0.25, 0, 0], head: Z3,
-  shL: [-0.4, 0, -0.9], elL: [-0.3, 0, 0], shR: [-0.4, 0, 0.9], elR: [-0.3, 0, 0],
-  hipL: [-0.3, 0, -0.1], kneeL: [0.5, 0, 0], hipR: [0.15, 0, 0.1], kneeR: [0.3, 0, 0],
-  root: [0, 0, -0.18, -1.4, 0, 0]
+  spine: [0.02, 0, 0], chest: [0.06, 0, 0.02], neck: [0.15, 0.55, 0], head: [0, 0.25, 0],
+  shL: [-0.15, 0, -0.7], elL: [-0.4, 0, 0], shR: [-0.15, 0, 0.4], elR: [-0.45, 0, 0],
+  hipL: [-0.05, 0, -0.18], kneeL: [0.35, 0, 0], hipR: [0.05, 0, 0.14], kneeR: [0.6, 0, 0],
+  ankL: [0.2, 0, 0], ankR: [0.3, 0, 0],
+  root: [0, 0.05, 0, 1.55, 0, 0.05]
 };
 
 const RISE = {
@@ -1018,9 +1024,12 @@ export function createRig(char, side) {
   let comShift = 0;       // weight-shift onto the support leg
   const _foot = new THREE.Vector3();
   let ragdoll = null;     // verlet particle skeleton, active on KO/knockdown
-  let getUpStarted = false;
+  let downActive = false;
+  let downT = 0;
   let landX = 0;
-  const GETUP_DUR = 1300; // ms of the get-up animation (the tail of downTime)
+  let getupKeys = null;
+  const GETUP_DUR = 1600; // ms of the authored get-up (the tail of downTime)
+  const FLOOR_Y = 0.07;   // lowest bone centerline rests here (flesh fills the gap)
   const ik = {
     root: new THREE.Vector3(), tgt: new THREE.Vector3(), ppos: new THREE.Vector3(),
     pq: new THREE.Quaternion(), pqi: new THREE.Quaternion(), scl: new THREE.Vector3(),
@@ -1115,34 +1124,92 @@ export function createRig(char, side) {
     return { goal: null, rate: 8 };
   }
 
-  // A full get-up: prone -> push-up -> up on a knee -> stand. p in 0..1.
-  function getUpGoal(p) {
-    const lyingY = lying.root[1];
-    if (p < 0.28) {
-      return composePose(stanceBase, {
-        chest: [0.34, 0, 0], neck: [0.42, 0, 0], spine: [0.18, 0, 0],
-        shL: [-1.35, 0.35, -0.4], elL: [-2.3, 0, 0], shR: [-1.35, -0.35, 0.4], elR: [-2.3, 0, 0],
-        hipL: [-0.7, 0, -0.1], kneeL: [1.3, 0, 0], hipR: [-0.5, 0, 0.1], kneeR: [1.1, 0, 0],
-        root: [0, lyingY, 0.05, 1.25, 0, 0]
-      });
+  // Authored get-up driven by body SHAPE; the ground-clamp sets height, so the
+  // pelvis rises on its own as the silhouette changes: prone -> press up ->
+  // hands & knees -> post a foot -> rise -> stance. root[1] is irrelevant here
+  // (the clamp neutralizes it); only the pitch (root[3]) and forward shift
+  // (root[2]) shape the arc. q in 0..1.
+  function buildGetupKeys() {
+    const K = (t, ov) => ({ t, pose: composePose(stanceBase, ov) });
+    getupKeys = [
+      // prone sprawl (matches LYING)
+      K(0.00, { spine: [0.02, 0, 0], chest: [0.06, 0, 0.02], neck: [0.15, 0.55, 0], head: [0, 0.25, 0],
+                shL: [-0.15, 0, -0.7], elL: [-0.4, 0, 0], shR: [-0.15, 0, 0.4], elR: [-0.45, 0, 0],
+                hipL: [-0.05, 0, -0.18], kneeL: [0.35, 0, 0], hipR: [0.05, 0, 0.14], kneeR: [0.6, 0, 0],
+                ankL: [0.2, 0, 0], ankR: [0.3, 0, 0], root: [0, 0, 0, 1.55, 0, 0.05] }),
+      // press-up: hands plant under shoulders, chest arches up off the mat
+      K(0.24, { spine: [0.16, 0, 0], chest: [0.46, 0, 0], neck: [0.18, 0.2, 0],
+                shL: [-1.5, 0, -0.12], elL: [-0.4, 0, 0], shR: [-1.5, 0, 0.12], elR: [-0.4, 0, 0],
+                hipL: [-0.25, 0, -0.12], kneeL: [0.3, 0, 0], hipR: [-0.15, 0, 0.1], kneeR: [0.4, 0, 0],
+                root: [0, 0, 0.12, 1.22, 0, 0.04] }),
+      // hands & knees: hips pike up, knees draw under the body, arms straight
+      K(0.44, { spine: [0.2, 0, 0], chest: [0.3, 0, 0], neck: [0.28, 0, 0],
+                shL: [-1.6, 0, -0.15], elL: [-0.22, 0, 0], shR: [-1.6, 0, 0.15], elR: [-0.22, 0, 0],
+                hipL: [-1.45, 0, -0.06], kneeL: [1.5, 0, 0], hipR: [-1.35, 0, 0.06], kneeR: [1.5, 0, 0],
+                ankL: [0.5, 0, 0], ankR: [0.5, 0, 0], root: [0, 0, 0.18, 0.82, 0, 0.03] }),
+      // post a foot: lead (right) foot plants, hands lift, torso stacks over it
+      K(0.64, { spine: [0.12, 0.05, 0], chest: [0.2, 0.12, 0], neck: [0.05, 0, 0],
+                shL: [-0.6, 0, -0.25], elL: [-1.3, 0, 0], shR: [-0.75, 0, 0.32], elR: [-1.0, 0, 0],
+                hipL: [-1.5, 0, -0.05], kneeL: [1.55, 0, 0], hipR: [-0.5, 0, 0.05], kneeR: [0.95, 0, 0], ankR: [0.35, 0, 0],
+                root: [0, 0, 0.08, 0.46, 0, 0.02] }),
+      // rise: drive up off the lead leg, both feet under, torso uprighting
+      K(0.84, { chest: [0.1, 0.25, 0], neck: [0.02, 0, 0],
+                shL: [-0.5, 0, -0.16], elL: [-1.7, 0, 0], shR: [-0.4, 0, 0.2], elR: [-1.9, 0, 0],
+                hipL: [-0.42, 0, -0.05], kneeL: [0.72, 0, 0], hipR: [-0.26, 0, 0.05], kneeR: [0.5, 0, 0],
+                root: [0, 0, 0.02, 0.18, 0, 0.01] }),
+      K(1.00, {})
+    ];
+  }
+
+  function sampleKeys(keys, q) {
+    let a = keys[0], b = keys[keys.length - 1];
+    for (let i = 0; i < keys.length - 1; i++) { if (q >= keys[i].t && q <= keys[i + 1].t) { a = keys[i]; b = keys[i + 1]; break; } }
+    const span = Math.max(1e-4, b.t - a.t);
+    const local = easeInOut(Math.min(1, Math.max(0, (q - a.t) / span)));
+    const out = {};
+    for (const j of JOINTS) out[j] = [
+      a.pose[j][0] + (b.pose[j][0] - a.pose[j][0]) * local,
+      a.pose[j][1] + (b.pose[j][1] - a.pose[j][1]) * local,
+      a.pose[j][2] + (b.pose[j][2] - a.pose[j][2]) * local
+    ];
+    out.root = [];
+    for (let i = 0; i < 6; i++) out.root[i] = a.pose.root[i] + (b.pose.root[i] - a.pose.root[i]) * local;
+    return out;
+  }
+
+  function blendPose(goal, rate, dtSec) {
+    const k = 1 - Math.exp(-rate * dtSec);
+    for (const j of JOINTS) {
+      pose[j][0] += (goal[j][0] - pose[j][0]) * k;
+      pose[j][1] += (goal[j][1] - pose[j][1]) * k;
+      pose[j][2] += (goal[j][2] - pose[j][2]) * k;
     }
-    if (p < 0.55) {
-      return composePose(stanceBase, {
-        chest: [0.5, 0, 0], neck: [0.3, 0, 0], spine: [0.2, 0, 0],
-        shL: [-1.5, 0.05, -0.2], elL: [-0.3, 0, 0], shR: [-1.5, -0.05, 0.2], elR: [-0.3, 0, 0],
-        hipL: [-1.25, 0, -0.05], kneeL: [1.45, 0, 0], hipR: [-1.05, 0, 0.05], kneeR: [1.25, 0, 0],
-        root: [0, lyingY * 0.55, 0.1, 0.95, 0, 0]
-      });
+    for (let i = 0; i < 6; i++) pose.root[i] += (goal.root[i] - pose.root[i]) * k;
+    pushPose();
+  }
+
+  // Joints that can touch the mat when down. Used to rest the body on the floor
+  // regardless of pose: hands/knees during a crawl-up, belly while prone, feet
+  // once upright. Flesh extends ~0.08 below a bone centerline, so we float the
+  // lowest centerline a touch above 0.
+  const CONTACT = ["head", "neck", "chest", "spine", "shL", "shR", "elL", "elR",
+    "wrL", "wrR", "hipL", "hipR", "kneeL", "kneeR", "ankL", "ankR"];
+  const _gcV = new THREE.Vector3();
+  // Sets group.y so the lowest contact rests at `target`. `strength` (0..1)
+  // fades the correction out as the fighter returns to a normal stance.
+  function groundClamp(target, strength) {
+    group.updateWorldMatrix(true, true);
+    let minY = Infinity;
+    for (const n of CONTACT) {
+      const j = joints[n];
+      if (!j) continue;
+      j.getWorldPosition(_gcV);
+      if (_gcV.y < minY) minY = _gcV.y;
     }
-    if (p < 0.82) {
-      return composePose(stanceBase, {
-        chest: [0.22, 0.12, 0], neck: [0.1, 0, 0],
-        shL: [-0.6, 0, -0.3], elL: [-1.5, 0, 0], shR: [-0.75, 0, 0.3], elR: [-1.3, 0, 0],
-        hipL: [-0.95, 0, -0.05], kneeL: [1.55, 0, 0], hipR: [-0.2, 0, 0.05], kneeR: [0.85, 0, 0],
-        root: [0, lyingY * 0.28, 0.04, 0.32, 0, 0]
-      });
-    }
-    return composePose(stanceBase, { root: [0, lyingY * 0.06, 0, 0.06, 0, 0] });
+    if (!Number.isFinite(minY)) return;
+    const lift = (target - minY) * strength;
+    group.position.y += lift;
+    group.updateWorldMatrix(true, true);
   }
 
   function react(type, payload = {}) {
@@ -1180,7 +1247,7 @@ export function createRig(char, side) {
       defeated = true; celebrate = false;
     } else if (type === "reset") {
       celebrate = false; defeated = false; reaction = null; sequence = null; lunge = null; collapse = null; ragdoll = null;
-      group.position.y = 0; group.position.z = 0; feetWX = null; stepping = null;
+      group.position.y = 0; group.position.z = 0; feetWX = null; stepping = null; downActive = false;
     }
   }
 
@@ -1436,9 +1503,9 @@ export function createRig(char, side) {
     const display = !!ctx.display;
     group.rotation.y = faceSign > 0 ? Math.PI / 2 : -Math.PI / 2;
 
-    // Returned to standing: clear any ragdoll/get-up and don't snap position.
-    if (!actor.koed && actor.downTime <= 0 && (ragdoll || getUpStarted)) {
-      ragdoll = null; getUpStarted = false; feetWX = null; stepping = null;
+    // Returned to standing: clear down state without snapping position.
+    if (!actor.koed && actor.downTime <= 0 && downActive) {
+      downActive = false; feetWX = null; stepping = null;
       currentX = group.position.x;
       group.position.y = 0; group.position.z = 0;
     }
@@ -1453,38 +1520,31 @@ export function createRig(char, side) {
       return;
     }
 
-    // Knockdown / KO aftermath: a physical ragdoll fall + settle, then a full
-    // slow get-up. A KO never gets up (it just settles).
+    // Knockdown / KO: settle into a natural lying pose, then an authored get-up.
+    // The dramatic fall itself is the paired slam/throw choreography (above).
     if (actor.koed || actor.downTime > 0) {
-      const settling = actor.koed || actor.downTime > GETUP_DUR;
-      if (settling) {
-        try {
-          if (!ragdoll) initRagdoll(faceSign);
-          stepRagdoll(dt);
-          applyRagdoll();
-        } catch (e) { applyPoseImmediate(composePose(lying)); }
-        getUpStarted = false;
+      if (!downActive) { downActive = true; downT = 0; landX = group.position.x; group.position.y = 0; if (!getupKeys) buildGetupKeys(); }
+      downT += dt;
+      group.position.x = landX; group.position.z = 0;
+      currentX = landX;
+      let clampStrength = 1;
+      if (!actor.koed && actor.downTime <= GETUP_DUR) {
+        const q = Math.max(0, Math.min(1, 1 - actor.downTime / GETUP_DUR));
+        blendPose(sampleKeys(getupKeys, q), 12, dtSec);
+        // Hand height back to the normal stance over the last beat so there is
+        // no vertical pop when the down state releases.
+        clampStrength = 1 - Math.max(0, Math.min(1, (q - 0.85) / 0.15));
       } else {
-        if (!getUpStarted) {
-          getUpStarted = true;
-          landX = group.position.x;
-          ragdoll = null;
-          group.position.set(landX, 0, 0);
-          applyPoseImmediate(getUpGoal(0));
+        const goalL = composePose(lying);
+        if (downT < 360) {
+          blendPose(goalL, 12, dtSec); // settle into the sprawl
+        } else {
+          goalL.chest[0] += Math.sin(t * 0.003) * 0.03; // breathing
+          goalL.spine[0] += Math.sin(t * 0.003) * 0.012;
+          blendPose(goalL, 5, dtSec);
         }
-        const gp = Math.max(0, Math.min(1, 1 - actor.downTime / GETUP_DUR));
-        const goalG = getUpGoal(gp);
-        const gk = 1 - Math.exp(-5.5 * dtSec);
-        for (const j of JOINTS) {
-          pose[j][0] += (goalG[j][0] - pose[j][0]) * gk;
-          pose[j][1] += (goalG[j][1] - pose[j][1]) * gk;
-          pose[j][2] += (goalG[j][2] - pose[j][2]) * gk;
-        }
-        for (let i = 0; i < 6; i++) pose.root[i] += (goalG.root[i] - pose.root[i]) * gk;
-        group.position.set(landX, 0, 0);
-        currentX = landX;
-        pushPose();
       }
+      groundClamp(FLOOR_Y, clampStrength);
       updateFace(actor, dt);
       updateHands(actor, dt);
       updateGlow(actor, t);

@@ -625,7 +625,8 @@ function frame(now) {
     const camGame = seqLive ? { slowMo: 1, slowMoScale: 0.5, shake: combat.game.shake } : combat.game;
     const view = {
       ots: session.cameraMode === "ots" && session.config.mode !== "pvp",
-      px: session.rigs.player.x, ex: session.rigs.enemy.x
+      px: session.rigs.player.x, ex: session.rigs.enemy.x,
+      down: combat.actors.player.downTime > 0 || combat.actors.player.koed || combat.actors.enemy.downTime > 0 || combat.actors.enemy.koed
     };
     session.stage.updateCamera(dtRaw, camGame, (session.rigs.player.x + session.rigs.enemy.x) / 2, sep, now, view);
     hud.update(combat, session.config, session.gauntlet);
