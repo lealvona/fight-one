@@ -597,7 +597,8 @@ export function createCombat({ chars, log, effect, roundTime = 60, winsNeeded = 
   }
 
   function knockdown(actor, ms) {
-    actor.downTime = Math.max(actor.downTime, ms);
+    // Slower, weightier knockdowns: each adds time to fall, settle and get up.
+    actor.downTime = Math.max(actor.downTime, ms * 1.9 + 900);
     actor.staggerTime = 0;
     actor.stringCount = 0;
     actor.lastHitAt = 0;
@@ -635,8 +636,8 @@ export function createCombat({ chars, log, effect, roundTime = 60, winsNeeded = 
 
   function koFinish(winner, loser, move) {
     loser.koed = true;
-    loser.downTime = 2400;
-    game.slowMo = 900; game.slowMoScale = 0.3;
+    loser.downTime = 3400;
+    game.slowMo = 1100; game.slowMoScale = 0.3;
     effect("ko", { winner: winner.id, loser: loser.id, move: move.name });
     resetRound(`${pretty(winner)} ends it with ${move.name}`);
   }

@@ -1017,7 +1017,10 @@ export function createRig(char, side) {
   let stepCd = 0;
   let comShift = 0;       // weight-shift onto the support leg
   const _foot = new THREE.Vector3();
-  let ragdoll = null;     // verlet particle skeleton, active on KO
+  let ragdoll = null;     // verlet particle skeleton, active on KO/knockdown
+  let getUpStarted = false;
+  let landX = 0;
+  const GETUP_DUR = 1300; // ms of the get-up animation (the tail of downTime)
   const ik = {
     root: new THREE.Vector3(), tgt: new THREE.Vector3(), ppos: new THREE.Vector3(),
     pq: new THREE.Quaternion(), pqi: new THREE.Quaternion(), scl: new THREE.Vector3(),
@@ -1110,6 +1113,36 @@ export function createRig(char, side) {
       };
     }
     return { goal: null, rate: 8 };
+  }
+
+  // A full get-up: prone -> push-up -> up on a knee -> stand. p in 0..1.
+  function getUpGoal(p) {
+    const lyingY = lying.root[1];
+    if (p < 0.28) {
+      return composePose(stanceBase, {
+        chest: [0.34, 0, 0], neck: [0.42, 0, 0], spine: [0.18, 0, 0],
+        shL: [-1.35, 0.35, -0.4], elL: [-2.3, 0, 0], shR: [-1.35, -0.35, 0.4], elR: [-2.3, 0, 0],
+        hipL: [-0.7, 0, -0.1], kneeL: [1.3, 0, 0], hipR: [-0.5, 0, 0.1], kneeR: [1.1, 0, 0],
+        root: [0, lyingY, 0.05, 1.25, 0, 0]
+      });
+    }
+    if (p < 0.55) {
+      return composePose(stanceBase, {
+        chest: [0.5, 0, 0], neck: [0.3, 0, 0], spine: [0.2, 0, 0],
+        shL: [-1.5, 0.05, -0.2], elL: [-0.3, 0, 0], shR: [-1.5, -0.05, 0.2], elR: [-0.3, 0, 0],
+        hipL: [-1.25, 0, -0.05], kneeL: [1.45, 0, 0], hipR: [-1.05, 0, 0.05], kneeR: [1.25, 0, 0],
+        root: [0, lyingY * 0.55, 0.1, 0.95, 0, 0]
+      });
+    }
+    if (p < 0.82) {
+      return composePose(stanceBase, {
+        chest: [0.22, 0.12, 0], neck: [0.1, 0, 0],
+        shL: [-0.6, 0, -0.3], elL: [-1.5, 0, 0], shR: [-0.75, 0, 0.3], elR: [-1.3, 0, 0],
+        hipL: [-0.95, 0, -0.05], kneeL: [1.55, 0, 0], hipR: [-0.2, 0, 0.05], kneeR: [0.85, 0, 0],
+        root: [0, lyingY * 0.28, 0.04, 0.32, 0, 0]
+      });
+    }
+    return composePose(stanceBase, { root: [0, lyingY * 0.06, 0, 0.06, 0, 0] });
   }
 
   function react(type, payload = {}) {
@@ -1403,28 +1436,55 @@ export function createRig(char, side) {
     const display = !!ctx.display;
     group.rotation.y = faceSign > 0 ? Math.PI / 2 : -Math.PI / 2;
 
-    if (actor.koed) {
-      try {
-        if (!ragdoll) initRagdoll(faceSign);
-        stepRagdoll(dt);
-        applyRagdoll();
-      } catch (e) { applyPoseImmediate(composePose(lying)); }
+    // Returned to standing: clear any ragdoll/get-up and don't snap position.
+    if (!actor.koed && actor.downTime <= 0 && (ragdoll || getUpStarted)) {
+      ragdoll = null; getUpStarted = false; feetWX = null; stepping = null;
+      currentX = group.position.x;
+      group.position.y = 0; group.position.z = 0;
+    }
+    if (!actor.koed && actor.downTime <= 0 && group.position.y !== 0) group.position.y = 0;
+
+    // The dramatic fall choreography (slam/throw) plays first, if any.
+    if (sequence) {
+      updateSequence(dt, Math.max(dtSec, 0.012));
       updateFace(actor, dt);
       updateHands(actor, dt);
       updateGlow(actor, t);
       return;
-    } else if (ragdoll) {
-      ragdoll = null;
-      group.position.y = 0;
-      group.position.z = 0;
-      feetWX = null;
-      stepping = null;
     }
-    // Safety: outside the KO ragdoll the body never sits below the floor.
-    if (group.position.y !== 0) group.position.y = 0;
 
-    if (sequence) {
-      updateSequence(dt, Math.max(dtSec, 0.012));
+    // Knockdown / KO aftermath: a physical ragdoll fall + settle, then a full
+    // slow get-up. A KO never gets up (it just settles).
+    if (actor.koed || actor.downTime > 0) {
+      const settling = actor.koed || actor.downTime > GETUP_DUR;
+      if (settling) {
+        try {
+          if (!ragdoll) initRagdoll(faceSign);
+          stepRagdoll(dt);
+          applyRagdoll();
+        } catch (e) { applyPoseImmediate(composePose(lying)); }
+        getUpStarted = false;
+      } else {
+        if (!getUpStarted) {
+          getUpStarted = true;
+          landX = group.position.x;
+          ragdoll = null;
+          group.position.set(landX, 0, 0);
+          applyPoseImmediate(getUpGoal(0));
+        }
+        const gp = Math.max(0, Math.min(1, 1 - actor.downTime / GETUP_DUR));
+        const goalG = getUpGoal(gp);
+        const gk = 1 - Math.exp(-5.5 * dtSec);
+        for (const j of JOINTS) {
+          pose[j][0] += (goalG[j][0] - pose[j][0]) * gk;
+          pose[j][1] += (goalG[j][1] - pose[j][1]) * gk;
+          pose[j][2] += (goalG[j][2] - pose[j][2]) * gk;
+        }
+        for (let i = 0; i < 6; i++) pose.root[i] += (goalG.root[i] - pose.root[i]) * gk;
+        group.position.set(landX, 0, 0);
+        currentX = landX;
+        pushPose();
+      }
       updateFace(actor, dt);
       updateHands(actor, dt);
       updateGlow(actor, t);
@@ -1451,13 +1511,7 @@ export function createRig(char, side) {
     let goal;
     let rate = 6.5;
 
-    if (actor.downTime > 0 && actor.downTime > 380) {
-      goal = composePose(lying);
-      rate = 9;
-    } else if (actor.downTime > 0) {
-      goal = composePose(stanceBase, RISE);
-      rate = 8;
-    } else if (actor.staggerTime > 0) {
+    if (actor.staggerTime > 0) {
       goal = composePose(stanceBase, STAGGER);
       goal.root[5] += Math.sin(t * 0.009) * 0.1;
       goal.neck[2] += Math.sin(t * 0.011) * 0.12;
