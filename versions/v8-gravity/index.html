@@ -2,7 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="mobile-web-app-capable" content="yes">
   <title>Ironflow Gravity</title>
   <style>
     :root {
@@ -684,6 +685,27 @@
     body.a11y-large .callout { font-size: 22px; }
     body.a11y-large .key b { font-size: 16px; }
     body.no-grain .filmLayer { display: none; }
+
+
+    /* ---- touch / mobile ---- */
+    .key, .chip, .charCard, .startButton, .bindBtn, .camButton { touch-action: manipulation; }
+    body { -webkit-tap-highlight-color: transparent; }
+
+    @media (max-width: 600px), (pointer: coarse) and (max-width: 820px) {
+      .hud { grid-template-columns: 1fr 1fr; inset: 6px 6px auto; gap: 6px; }
+      .centerPanel { display: none; }
+      .epithet, .tempo { display: none; }
+      .controls { left: 6px; right: 6px; bottom: 6px; grid-template-columns: 1fr; }
+      .matrix, .telemetry { display: none; }
+      .keysGrid { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 5px; }
+      .key { min-height: 52px; font-size: 11px; }
+      .key b { font-size: 16px; }
+      .camButton { min-height: 34px; }
+      .selectGrid { grid-template-columns: 1fr; }
+      .selectCard, .optionsCard { padding: 14px; }
+      .optBinds { grid-template-columns: repeat(2, 1fr); }
+      .trainingPanel { display: none; }
+    }
 
     @media (max-width: 900px) {
       .creatorLayout { grid-template-columns: 1fr; }

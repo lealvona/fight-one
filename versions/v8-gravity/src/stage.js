@@ -530,10 +530,38 @@ export function createStage(renderer, stageId = "crucible") {
     });
   }
 
+  // --- training hitbox / reach visualizer ------------------------------------
+  const debugGroup = new THREE.Group();
+  debugGroup.visible = false;
+  scene.add(debugGroup);
+  const PHASE_COLOR = { startup: 0x6ab8ff, active: 0xe45745, recovery: 0x8a949c };
+  const debugHits = {};
+  for (const id of ["player", "enemy"]) {
+    const m = new THREE.Mesh(
+      new THREE.SphereGeometry(1, 16, 12),
+      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.32, depthWrite: false })
+    );
+    m.visible = false;
+    debugGroup.add(m);
+    debugHits[id] = m;
+  }
+  function setDebug(on) { debugGroup.visible = on; if (!on) for (const id in debugHits) debugHits[id].visible = false; }
+  function debugStrike(id, pos, phase, radius) {
+    const m = debugHits[id];
+    if (!m) return;
+    m.visible = true;
+    m.position.copy(pos);
+    m.scale.setScalar(radius);
+    m.material.color.setHex(PHASE_COLOR[phase] || 0xffffff);
+    m.material.opacity = phase === "active" ? 0.42 : 0.22;
+  }
+  function debugClear(id) { if (debugHits[id]) debugHits[id].visible = false; }
+
   return {
     scene, camera, stageId,
     update, updateCamera, render, resize, dispose,
-    spawnSparks, spawnRing, spawnFloater, spawnFlash, spawnDust, flashRim, punch
+    spawnSparks, spawnRing, spawnFloater, spawnFlash, spawnDust, flashRim, punch,
+    setDebug, debugStrike, debugClear
   };
 }
 

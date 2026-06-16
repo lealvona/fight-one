@@ -200,6 +200,17 @@ function anySequenceActive() {
 }
 
 const IK_LIMBS = new Set(["LH", "RH", "LL", "RL", "BR"]);
+// Training hitbox/reach viz: show the active limb volume, colored by phase.
+const VIZ_JOINT = { LH: "handL", RH: "handR", BR: "handR", LL: "ankL", RL: "ankR", HB: "head" };
+function updateStrikeViz(id) {
+  const a = session.combat.actors[id];
+  const cur = a.current;
+  const stage = session.stage;
+  if (!cur || !VIZ_JOINT[cur.limb]) { stage.debugClear(id); return; }
+  const phase = a.phaseTime < cur.startup ? "startup" : a.phaseTime < cur.startup + cur.active ? "active" : "recovery";
+  const pos = rigOf(id).worldPoint(VIZ_JOINT[cur.limb]).clone();
+  stage.debugStrike(id, pos, phase, 0.16 + (cur.commitment || 1) * 0.03);
+}
 function aimFor(attackerId, defenderId) {
   const a = session.combat.actors[attackerId];
   const cur = a.current;
@@ -618,7 +629,14 @@ function frame(now) {
     };
     session.stage.updateCamera(dtRaw, camGame, (session.rigs.player.x + session.rigs.enemy.x) / 2, sep, now, view);
     hud.update(combat, session.config, session.gauntlet);
-    if (cfg === "training") training.update(combat);
+    if (cfg === "training") {
+      training.update(combat);
+      session.stage.setDebug(true);
+      updateStrikeViz("player");
+      updateStrikeViz("enemy");
+    } else {
+      session.stage.setDebug(false);
+    }
     audio.setIntensity(0.3 + (1 - Math.min(combat.actors.player.hp, combat.actors.enemy.hp) / 100) * 0.7);
   } else {
     session.timeScale = 1;
