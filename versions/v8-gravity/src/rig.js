@@ -506,6 +506,66 @@ export function createRig(char, side) {
   const poseRoot = new THREE.Group();
   group.add(poseRoot);
 
+  // Multi-strand verlet hair/cloth: segment meshes live under strandRoot (a
+  // child of group with identity transform), driven by a world-space sim.
+  const strands = [];
+  const strandRoot = new THREE.Group();
+  group.add(strandRoot);
+  const _sA = new THREE.Vector3(), _sT = new THREE.Vector3(), _sMid = new THREE.Vector3();
+  const _sDir = new THREE.Vector3(), _sLocalDir = new THREE.Vector3();
+  const _sQ = new THREE.Quaternion(), _sQi = new THREE.Quaternion();
+  const _S_UP = new THREE.Vector3(0, -1, 0);
+
+  function addStrand(anchorBone, ox, oy, oz, n, segLen, rad, material) {
+    const pts = [], prev = [], meshes = [];
+    for (let i = 0; i <= n; i++) { pts.push(new THREE.Vector3()); prev.push(new THREE.Vector3()); }
+    for (let i = 0; i < n; i++) { const m = capsule(rad * (1 - i * 0.12), segLen, material); strandRoot.add(m); meshes.push(m); }
+    strands.push({ anchor: anchorBone, offset: new THREE.Vector3(ox, oy, oz), pts, prev, meshes, segLen, n, init: false });
+  }
+
+  function updateStrands(dt) {
+    if (!strands.length) return;
+    const dtSec = Math.min(0.04, dt / 1000);
+    group.updateMatrixWorld(true);
+    group.getWorldQuaternion(_sQ);
+    _sQi.copy(_sQ).invert();
+    const g = 9 * dtSec * dtSec;
+    for (const st of strands) {
+      st.anchor.updateWorldMatrix(true, false);
+      _sA.copy(st.offset).applyMatrix4(st.anchor.matrixWorld);
+      if (!st.init) { for (let i = 0; i <= st.n; i++) { st.pts[i].copy(_sA); st.pts[i].y -= i * st.segLen; st.prev[i].copy(st.pts[i]); } st.init = true; }
+      st.pts[0].copy(_sA); st.prev[0].copy(_sA);
+      for (let i = 1; i <= st.n; i++) {
+        const p = st.pts[i], q = st.prev[i];
+        _sT.copy(p);
+        p.x += (p.x - q.x) * 0.9;
+        p.y += (p.y - q.y) * 0.9 - g;
+        p.z += (p.z - q.z) * 0.9;
+        q.copy(_sT);
+        if (!Number.isFinite(p.x)) { st.init = false; }
+      }
+      for (let it = 0; it < 4; it++) {
+        for (let i = 1; i <= st.n; i++) {
+          const a = st.pts[i - 1], b = st.pts[i];
+          _sT.subVectors(b, a);
+          const d = _sT.length() || 1e-4;
+          _sT.multiplyScalar((d - st.segLen) / d);
+          if (i - 1 === 0) b.sub(_sT);
+          else { a.addScaledVector(_sT, 0.5); b.addScaledVector(_sT, -0.5); }
+        }
+      }
+      for (let i = 0; i < st.n; i++) {
+        const a = st.pts[i], b = st.pts[i + 1];
+        _sMid.addVectors(a, b).multiplyScalar(0.5);
+        st.meshes[i].position.copy(group.worldToLocal(_sMid.clone()));
+        _sDir.subVectors(b, a);
+        if (_sDir.lengthSq() < 1e-8) continue;
+        _sDir.normalize().applyQuaternion(_sQi);
+        st.meshes[i].quaternion.setFromUnitVectors(_S_UP, _sDir);
+      }
+    }
+  }
+
   const bones = [];
   const joints = {};
 
@@ -826,16 +886,9 @@ export function createRig(char, side) {
       const band = box(r * 2.15, H * 0.018, r * 2.15, mat(c.headband));
       band.position.y = r * 1.42;
       joints.head.add(band);
-      const tails = new THREE.Group();
       for (const off of [-0.012, 0.012]) {
-        const tail = box(H * 0.016, H * 0.1, 0.008, mat(c.headband));
-        tail.position.set(off * H, -H * 0.04, -r * 1.0);
-        tail.rotation.x = 0.35;
-        tails.add(tail);
+        addStrand(joints.head, off * H, r * 1.32, -r * 1.0, 2, H * 0.052, H * 0.012, mat(c.headband));
       }
-      tails.position.y = r * 1.35;
-      joints.head.add(tails);
-      joints.clothSway = tails;
     }
     if (co.hair === "short" || co.hair === "swept") {
       const capHair = sphere(r * 1.02, hairM, 0.98, 0.72, 1.0);
@@ -871,16 +924,7 @@ export function createRig(char, side) {
       const capHair = sphere(r * 1.02, hairM, 0.98, 0.7, 1.0);
       capHair.position.set(0, r * 1.48, -r * 0.05);
       joints.head.add(capHair);
-      const tail = new THREE.Group();
-      for (let i = 0; i < 3; i++) {
-        const seg = capsule(r * (0.3 - i * 0.06), H * 0.08, hairM);
-        seg.position.y = -H * 0.045 - i * H * 0.07;
-        tail.add(seg);
-      }
-      tail.position.set(0, r * 1.5, -r * 0.95);
-      tail.rotation.x = 0.5;
-      joints.head.add(tail);
-      joints.clothSway = tail;
+      addStrand(joints.head, 0, r * 1.5, -r * 0.95, 4, H * 0.07, r * 0.32, hairM);
     }
     if (co.mane) {
       const mane = box(r * 1.6, H * 0.12, r * 0.6, hairM);
@@ -926,11 +970,7 @@ export function createRig(char, side) {
       const wrap = box(r * 1.9, H * 0.032, r * 1.9, mat(c.scarf));
       wrap.position.y = H * 0.012;
       joints.neck.add(wrap);
-      const tail = box(H * 0.045, H * 0.16, 0.01, mat(c.scarf));
-      tail.position.set(0, -H * 0.06, -r * 0.9);
-      tail.rotation.x = 0.4;
-      joints.neck.add(tail);
-      joints.clothSway = tail;
+      addStrand(joints.neck, 0, -H * 0.02, -r * 0.9, 4, H * 0.055, H * 0.03, mat(c.scarf));
     }
   }
 
@@ -1552,6 +1592,7 @@ export function createRig(char, side) {
     updateFace(actor, dt);
     updateHands(actor, dt);
     updateSecondary(dt, dtSec, drawX);
+    updateStrands(dt);
     updateGlow(actor, t);
   }
 
