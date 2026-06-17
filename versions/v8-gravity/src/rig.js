@@ -1010,6 +1010,7 @@ export function createRig(char, side) {
   let celebrate = false;
   let defeated = false;
   let sequence = null;
+  let seqLift = 0;        // current world-Y lift during a paired sequence (for coupling)
   let lunge = null;
 
   let blinkTimer = 700 + Math.random() * 2400;
@@ -1278,7 +1279,17 @@ export function createRig(char, side) {
       if (p >= keys[i].t && p <= keys[i + 1].t) { k0 = keys[i]; k1 = keys[i + 1]; break; }
     }
     const span = Math.max(0.0001, k1.t - k0.t);
-    const local = easeInOut(Math.min(1, Math.max(0, (p - k0.t) / span)));
+    const s = Math.min(1, Math.max(0, (p - k0.t) / span)); // raw segment progress
+    const local = easeInOut(s);                            // pose easing
+    // Vertical motion obeys gravity: a body thrown up decelerates to its apex,
+    // a body coming down accelerates into the mat, and once it lands it stays
+    // (no symmetric ease that floats and bounces).
+    const falling = k1.y < k0.y - 1e-4;
+    const rising = k1.y > k0.y + 1e-4;
+    const yE = falling ? s * s : rising ? 1 - (1 - s) * (1 - s) : local;
+    // Horizontal travel coasts at a constant rate while airborne instead of
+    // easing in and out, so a thrown body keeps its momentum across the arc.
+    const xE = (falling || rising) ? s : local;
 
     const goal = {};
     for (const j of JOINTS) {
@@ -1290,9 +1301,10 @@ export function createRig(char, side) {
     }
     goal.root = [];
     for (let i = 0; i < 6; i++) goal.root[i] = k0.goal.root[i] + (k1.goal.root[i] - k0.goal.root[i]) * local;
-    goal.root[1] += k0.y + (k1.y - k0.y) * local;
+    seqLift = k0.y + (k1.y - k0.y) * yE;
+    goal.root[1] += seqLift;
 
-    const worldX = k0.x + (k1.x - k0.x) * local;
+    const worldX = k0.x + (k1.x - k0.x) * xE;
     currentX = worldX;
     group.position.x = worldX;
 
@@ -1757,6 +1769,34 @@ export function createRig(char, side) {
     return tmpV;
   }
 
+  // ---- paired-throw coupling -------------------------------------------------
+  // A fresh vector each call (worldPoint reuses one); the director reads several
+  // anchors per frame, so it needs independent copies.
+  function anchor(name) {
+    const j = joints[name] || joints.chest;
+    const v = new THREE.Vector3();
+    j.getWorldPosition(v);
+    return v;
+  }
+  function sequenceProgress() {
+    return sequence ? Math.min(1, sequence.time / sequence.duration) : 1;
+  }
+  // Pin the rig in world space (used to carry a held victim at the thrower's
+  // hands) without disturbing the authored FK pose.
+  function placeWorld(x, y) {
+    group.position.x = x;
+    group.position.y = y || 0;
+    currentX = x;
+    group.updateWorldMatrix(true, true);
+  }
+  // Seat the thrower's hands onto live world targets (the victim's grip points),
+  // over the authored arm pose, so the grip actually lands on the body.
+  function gripReach(targetL, targetR, w) {
+    if (targetL) { try { applyLimbIK("L", true, targetL, w); } catch (e) {} }
+    if (targetR) { try { applyLimbIK("R", true, targetR, w); } catch (e) {} }
+    group.updateWorldMatrix(true, true);
+  }
+
   function dispose() {
     group.traverse(obj => {
       if (obj.geometry) obj.geometry.dispose();
@@ -1770,7 +1810,9 @@ export function createRig(char, side) {
   return {
     group, update, react, worldPoint, dispose, char,
     playSequence, sequenceActive,
-    get x() { return currentX; }
+    anchor, sequenceProgress, placeWorld, gripReach,
+    get x() { return currentX; },
+    get y() { return group.position.y; }
   };
 }
 
