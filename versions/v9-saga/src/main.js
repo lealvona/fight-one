@@ -567,9 +567,23 @@ function handleLadderResult(winner) {
 const P1_KEYS = new Set(["j", "k", "u", "i", "a", "s", "d", "f", "g"]);
 const P2_KEYS = { "1": "j", "2": "k", "3": "u", "4": "i", "z": "a", "x": "s", "c": "d", "v": "f", "b": "g" };
 
+// Direct movement: hold to stride in/out. Arrow keys (and Z/X as a fallback for
+// keyboards without them). Tracked as held state and applied every frame.
+const moveHeld = { fwd: false, back: false };
+function moveAxis(e, down) {
+  const k = e.key;
+  if (k === "ArrowRight" || k === "x" || k === "X") { moveHeld.fwd = down; return true; }
+  if (k === "ArrowLeft" || k === "z" || k === "Z") { moveHeld.back = down; return true; }
+  return false;
+}
+addEventListener("keyup", event => { if (moveAxis(event, false)) event.preventDefault(); });
+
 addEventListener("keydown", event => {
   audio.resume();
   const key = event.key.toLowerCase();
+
+  if ((event.key === "ArrowRight" || event.key === "ArrowLeft" || key === "z" || key === "x")
+      && session.mode === "fight") { moveAxis(event, true); event.preventDefault(); return; }
 
   if (key === "`" || key === "~") { setAdmin(!session.admin); event.preventDefault(); return; }
 
@@ -606,7 +620,7 @@ addEventListener("keydown", event => {
     const action = menu.keymap()[key];
     if (action) {
       event.preventDefault();
-      if (session.combat.intent("player", action, now)) session.combat.game.lastPlayerIntent = now;
+      if (session.combat.intent("player", action, now)) { session.combat.game.lastPlayerIntent = now; flashKey(action); }
       return;
     }
   }
@@ -650,6 +664,17 @@ function spawnAdminThrow(kind) {
   const slow = document.getElementById("admSlow");
   if (slow) slow.addEventListener("click", () => { session.adminSlow = !session.adminSlow; slow.classList.toggle("live", session.adminSlow); });
 })();
+
+// Instant input feedback: light up the pressed technique the moment it registers.
+const _keyEls = {};
+function flashKey(action) {
+  if (!(action in _keyEls)) _keyEls[action] = document.querySelector(`.keysGrid [data-key="${action}"]`);
+  const el = _keyEls[action];
+  if (!el) return;
+  el.classList.add("lit");
+  clearTimeout(el._litT);
+  el._litT = setTimeout(() => el.classList.remove("lit"), 140);
+}
 
 let _admFps = 60;
 const _admEl = { fps: document.getElementById("admFps"), seed: document.getElementById("admSeed"), range: document.getElementById("admRange") };
@@ -699,6 +724,10 @@ function frame(now) {
     combat.update(now, dt);
 
     const cfg = session.config.mode;
+    // Player spacing control (disabled while watching a replay or spectating).
+    if (cfg !== "spectate" && !session.playback) {
+      combat.steer("player", (moveHeld.fwd ? 1 : 0) - (moveHeld.back ? 1 : 0));
+    }
     if (session.playback) {
       const elapsed = now - session.playbackStart;
       if (session.playbackStart) {

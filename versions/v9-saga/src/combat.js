@@ -60,6 +60,7 @@ export function createCombat({ chars, log, effect, roundTime = 60, winsNeeded = 
       current: null,
       phaseTime: 0,
       prevPhaseTime: 0,
+      moveDir: 0,           // -1 retreat, +1 advance (direct spacing control)
       state: "ready",
       tempo: 0,
       inputTimes: [],
@@ -123,6 +124,12 @@ export function createCombat({ chars, log, effect, roundTime = 60, winsNeeded = 
     }
     enqueue(actor, move, now, actorId === "player");
     return true;
+  }
+
+  // Direct spacing control: dir is -1 (retreat), 0, or +1 (advance).
+  function steer(actorId, dir) {
+    const actor = actors[actorId];
+    if (actor) actor.moveDir = dir;
   }
 
   function enqueue(actor, move, now, human) {
@@ -645,16 +652,29 @@ export function createCombat({ chars, log, effect, roundTime = 60, winsNeeded = 
 
   // ---- spacing & recovery ----------------------------------------------------
 
+  const STEER = 0.00095; // range units per ms at a full stride
+
   function updateRange(dt) {
-    const centerPull = (0.5 - game.range) * 0.00012 * dt;
-    let drift = centerPull;
-    for (const actor of Object.values(actors)) {
-      const calm = !actor.current && actor.queue.length === 0 && actor.downTime <= 0 && actor.staggerTime <= 0;
-      if (calm && game.mode === "fight" && !game.roundLocked) {
-        drift += (actor.char.stats.wantRange - game.range) * 0.00018 * dt;
+    // Gentle center pull keeps bouts from drifting to the wall.
+    let delta = (0.5 - game.range) * 0.00012 * dt;
+
+    if (game.mode === "fight" && !game.roundLocked) {
+      for (const actor of [actors.player, actors.enemy]) {
+        if (actor.downTime > 0 || actor.staggerTime > 0) continue;
+        if (actor.moveDir) {
+          // Manual stride: advancing closes the gap (range is a shared scalar,
+          // so the sign is the same for either corner). Sluggish mid-technique.
+          const committed = actor.current && inActive(actor);
+          delta -= actor.moveDir * STEER * dt * (committed ? 0.3 : 1);
+        } else {
+          // Not steering: drift toward this fighter's preferred range, as before.
+          const calm = !actor.current && actor.queue.length === 0;
+          if (calm) delta += (actor.char.stats.wantRange - game.range) * 0.00018 * dt;
+        }
       }
     }
-    game.range = clamp(game.range + drift, 0.08, 0.96);
+
+    game.range = clamp(game.range + delta, 0.08, 0.96);
 
     if (game.range < 0.22) game.rangeName = "clinch range";
     else if (game.range < 0.42) game.rangeName = "pocket range";
@@ -812,7 +832,7 @@ export function createCombat({ chars, log, effect, roundTime = 60, winsNeeded = 
     }
   }
 
-  return { actors, game, intent, enqueueRaw: enqueue, update, startMatch, rng };
+  return { actors, game, intent, steer, enqueueRaw: enqueue, update, startMatch, rng };
 }
 
 function clamp(value, min, max) {

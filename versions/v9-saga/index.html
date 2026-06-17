@@ -264,11 +264,12 @@
       transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
     }
 
-    .key:active {
+    .key:active, .key.lit {
       transform: translateY(1px);
-      border-color: rgba(241,189,75,0.7);
-      background: rgba(241,189,75,0.14);
+      border-color: rgba(241,189,75,0.85);
+      background: rgba(241,189,75,0.22);
     }
+    .key.lit { transition: none; }
 
     .key b { display: block; color: var(--ink); font-size: 13px; }
     .key i { display: block; font-style: normal; font-size: 9px; opacity: 0.9; }
@@ -899,7 +900,7 @@
       <button class="adminBtn" id="admSlow" type="button">Slow-mo</button>
     </div>
   </section>
-  <div class="adminHint">N chronicle &nbsp; ` admin</div>
+  <div class="adminHint">&larr;&rarr; move &nbsp; N chronicle &nbsp; ` admin</div>
 
   <div id="filmLayer" class="filmLayer"></div>
   <div id="toast" class="toast"></div>
