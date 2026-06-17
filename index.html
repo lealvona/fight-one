@@ -235,10 +235,29 @@
   <script>
     const VERSIONS = [
       {
+        tag: "v9",
+        name: "Ironflow Saga",
+        sub: "version nine - latest",
+        latest: true,
+        accent: "#d8b46a",
+        href: "versions/v9-saga/",
+        gallery: "versions/v9-saga/gallery.html",
+        cover: "assets/shots/v9-cover.jpg",
+        thumbs: ["assets/shots/v9-chronicle.jpg", "assets/shots/v9-clean.jpg", "assets/shots/v9-admin.jpg"],
+        desc: "The fight tells its own story. A live prose Chronicle narrates the action in real time as it happens, a quieter decluttered HUD keeps the focus on the fighters, and an Admin mode unlocks the full diagnostic surface - frame data, hitbox/range visualizers, the sequence spawner and a free camera - for those who want it.",
+        features: [
+          "The Chronicle: a toggleable, auto-scrolling play-by-play that reads the fight like a recounting, updating live from the combat event stream",
+          "Decluttered HUD: stripped to the essentials by default, smaller and calmer, better on mobile",
+          "Admin mode: gated power-user panel - frame data, 3D hitbox/reach viz, RNG seed lock, paired-sequence spawner, free-fly camera",
+          "Seeded narration: phrasing is drawn from the match RNG, so replays narrate identically",
+          "Carried into v9: coupled physical throws (grip IK + carry + gravity) and the natural flat-prone knockdowns/get-ups"
+        ]
+      },
+      {
         tag: "v8",
         name: "Ironflow Gravity",
-        sub: "version eight - latest",
-        latest: true,
+        sub: "version eight",
+        latest: false,
         accent: "#9fb6c7",
         href: "versions/v8-gravity/",
         gallery: "versions/v8-gravity/gallery.html",
