@@ -318,6 +318,59 @@
     .eventLine { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .eventLine b { color: var(--ink); font-weight: 800; }
 
+    /* ---- Decluttered default + Admin mode ---- */
+    /* By default the reference/diagnostic surfaces are hidden; the bottom strip
+       collapses to just the input deck, centred, leaving the corners clean. */
+    .matrix, .telemetry { display: none; }
+    .callout, .tempo { display: none; }
+    .controls { grid-template-columns: minmax(0, 520px); justify-content: center; }
+    .key { min-height: 34px; }
+    .centerPanel { gap: 6px; }
+
+    body.admin .matrix, body.admin .telemetry { display: block; }
+    body.admin .callout, body.admin .tempo { display: flex; }
+    body.admin .tempo { display: flex; }
+    body.admin .controls { grid-template-columns: 1.15fr 0.95fr 0.85fr; justify-content: stretch; }
+
+    .adminPanel {
+      position: fixed;
+      right: 14px;
+      top: 96px;
+      width: 232px;
+      padding: 11px 12px;
+      display: none;
+      flex-direction: column;
+      gap: 8px;
+      z-index: 4;
+      pointer-events: auto;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 10.5px;
+      color: var(--muted);
+    }
+    body.admin .adminPanel { display: flex; }
+    .adminPanel .adminHead {
+      display: flex; justify-content: space-between; align-items: center;
+      color: var(--gold); letter-spacing: 0.12em; font-size: 10px; text-transform: uppercase;
+    }
+    .adminPanel .adminRow { display: flex; gap: 6px; flex-wrap: wrap; }
+    .adminPanel .stat { color: var(--ink); }
+    .adminBtn {
+      flex: 1 1 auto; min-width: 64px;
+      border: 1px solid rgba(216,180,106,0.45);
+      background: rgba(216,180,106,0.10);
+      color: var(--ink); border-radius: 5px; padding: 5px 6px;
+      font: inherit; cursor: pointer; text-align: center;
+      transition: background 120ms ease;
+    }
+    .adminBtn:hover { background: rgba(216,180,106,0.22); }
+    .adminBtn.live { border-color: var(--green); color: var(--green); }
+    .adminHint {
+      position: fixed; left: 14px; top: 50%; transform: translateY(-50%);
+      writing-mode: vertical-rl; font-family: ui-monospace, Menlo, monospace;
+      font-size: 9px; letter-spacing: 0.18em; color: rgba(174,182,187,0.42);
+      pointer-events: none; z-index: 1; text-transform: uppercase;
+    }
+
     .matchOverlay {
       position: fixed;
       inset: 0;
@@ -832,6 +885,21 @@
       <div id="eventLog" class="eventLog"></div>
     </section>
   </div>
+
+  <section id="adminPanel" class="adminPanel plate">
+    <div class="adminHead"><span>Admin</span><span id="admFps" class="stat">– fps</span></div>
+    <div class="adminRow"><span>seed</span><span id="admSeed" class="stat">–</span><span id="admRange" class="stat"></span></div>
+    <div class="adminRow">
+      <button class="adminBtn" data-throw="takedown" type="button">Slam</button>
+      <button class="adminBtn" data-throw="redirect" type="button">Redirect</button>
+      <button class="adminBtn" data-throw="launcher" type="button">Launch</button>
+    </div>
+    <div class="adminRow">
+      <button class="adminBtn" id="admViz" type="button">Hitboxes</button>
+      <button class="adminBtn" id="admSlow" type="button">Slow-mo</button>
+    </div>
+  </section>
+  <div class="adminHint">N chronicle &nbsp; ` admin</div>
 
   <div id="filmLayer" class="filmLayer"></div>
   <div id="toast" class="toast"></div>

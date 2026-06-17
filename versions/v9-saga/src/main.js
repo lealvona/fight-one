@@ -48,6 +48,10 @@ const session = {
   seqFx: [],
   pairedThrow: null,         // active two-body coupling: { attackerId, victimId, couple }
   chronicle: null,           // live prose narration of the fight
+  admin: false,              // power-user diagnostics + tools
+  adminViz: false,           // hitbox/reach overlay outside training
+  adminSlow: false,          // hold slow-mo
+  seed: 0,
   recording: false,
   playback: null,
   playbackStart: 0,
@@ -120,6 +124,7 @@ function startMatch(pId, eId, opts = {}) {
     maxRounds: oneRound ? 1 : 3,
     seed
   });
+  session.seed = seed;
   hud.bindFighters(chars.player, chars.enemy, config);
   hud.showSelect(false);
   session.mode = "fight";
@@ -566,6 +571,8 @@ addEventListener("keydown", event => {
   audio.resume();
   const key = event.key.toLowerCase();
 
+  if (key === "`" || key === "~") { setAdmin(!session.admin); event.preventDefault(); return; }
+
   if (menu.isOpen()) { if (key === "escape" || key === "o") { menu.close(); event.preventDefault(); } return; }
 
   if (session.mode === "select") {
@@ -621,6 +628,38 @@ document.querySelector(".keysGrid").addEventListener("pointerdown", event => {
   }
 });
 
+// ---- Admin mode ---------------------------------------------------------------------
+function setAdmin(on) {
+  session.admin = on;
+  document.body.classList.toggle("admin", on);
+  localStorage.setItem("saga.admin", on ? "on" : "off");
+}
+function spawnAdminThrow(kind) {
+  if (!session.combat || session.mode !== "fight") return;
+  const e = session.combat.actors.enemy;
+  e.queue = []; e.current = null; e.downTime = 2600;
+  runPaired(kind, "player", "enemy", "#e45745");
+}
+(function wireAdmin() {
+  if (localStorage.getItem("saga.admin") === "on") setAdmin(true);
+  for (const btn of document.querySelectorAll("#adminPanel [data-throw]")) {
+    btn.addEventListener("click", () => spawnAdminThrow(btn.dataset.throw));
+  }
+  const viz = document.getElementById("admViz");
+  if (viz) viz.addEventListener("click", () => { session.adminViz = !session.adminViz; viz.classList.toggle("live", session.adminViz); });
+  const slow = document.getElementById("admSlow");
+  if (slow) slow.addEventListener("click", () => { session.adminSlow = !session.adminSlow; slow.classList.toggle("live", session.adminSlow); });
+})();
+
+let _admFps = 60;
+const _admEl = { fps: document.getElementById("admFps"), seed: document.getElementById("admSeed"), range: document.getElementById("admRange") };
+function updateAdminStats(dtRaw, combat) {
+  _admFps += (1000 / Math.max(1, dtRaw) - _admFps) * 0.1;
+  if (_admEl.fps) _admEl.fps.textContent = Math.round(_admFps) + " fps";
+  if (_admEl.seed) _admEl.seed.textContent = String(session.seed || 0);
+  if (_admEl.range) _admEl.range.textContent = "range " + (combat.game.range ?? 0).toFixed(2);
+}
+
 hud.el.selectConfirm.addEventListener("click", () => hud.confirmSelect());
 hud.el.selectRandom.addEventListener("click", () => hud.randomRival());
 hud.el.rematchButton.addEventListener("click", () => {
@@ -645,6 +684,7 @@ function frame(now) {
 
   const combat = session.combat;
   if (combat && session.mode === "fight") {
+    if (session.admin && session.adminSlow) { combat.game.slowMo = Math.max(combat.game.slowMo, 80); combat.game.slowMoScale = 0.3; }
     // Hit-stop: the world holds its breath on contact.
     let dt;
     if (combat.game.hitStop > 0) {
@@ -694,14 +734,11 @@ function frame(now) {
     };
     session.stage.updateCamera(dtRaw, camGame, (session.rigs.player.x + session.rigs.enemy.x) / 2, sep, now, view);
     hud.update(combat, session.config, session.gauntlet);
-    if (cfg === "training") {
-      training.update(combat);
-      session.stage.setDebug(true);
-      updateStrikeViz("player");
-      updateStrikeViz("enemy");
-    } else {
-      session.stage.setDebug(false);
-    }
+    if (cfg === "training") training.update(combat);
+    const showViz = cfg === "training" || (session.admin && session.adminViz);
+    session.stage.setDebug(showViz);
+    if (showViz) { updateStrikeViz("player"); updateStrikeViz("enemy"); }
+    if (session.admin) updateAdminStats(dtRaw, combat);
     audio.setIntensity(0.3 + (1 - Math.min(combat.actors.player.hp, combat.actors.enemy.hp) / 100) * 0.7);
   } else {
     session.timeScale = 1;
