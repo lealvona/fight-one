@@ -13,6 +13,7 @@ import { BUILDERS } from "./sequences.js";
 import { initCreator } from "./creator.js";
 import { buildArcade } from "./story.js";
 import { createTraining } from "./training.js";
+import { createChronicle } from "./chronicle.js";
 import { createMenu } from "./menu.js";
 import { createReplay } from "./replay.js";
 
@@ -46,6 +47,7 @@ const session = {
   cameraMode: localStorage.getItem("anima.camera") || localStorage.getItem("kata.camera") || "side",
   seqFx: [],
   pairedThrow: null,         // active two-body coupling: { attackerId, victimId, couple }
+  chronicle: null,           // live prose narration of the fight
   recording: false,
   playback: null,
   playbackStart: 0,
@@ -121,6 +123,14 @@ function startMatch(pId, eId, opts = {}) {
   hud.bindFighters(chars.player, chars.enemy, config);
   hud.showSelect(false);
   session.mode = "fight";
+
+  // The Chronicle: live prose narration, seeded so replays read identically.
+  if (!session.chronicle) {
+    session.chronicle = createChronicle({ seed });
+    document.body.appendChild(session.chronicle.el);
+  } else {
+    session.chronicle.reset();
+  }
 
   session.playback = null;
   session.recording = false;
@@ -323,6 +333,8 @@ function onEffect(type, payload) {
   const stage = session.stage;
   if (!combat || !stage) return;
 
+  if (session.chronicle) { try { session.chronicle.note(type, payload, combat); } catch (e) {} }
+
   switch (type) {
     case "moveStart": {
       const m = payload.move;
@@ -485,6 +497,7 @@ function onEffect(type, payload) {
       rigOf("player").react("intro");
       rigOf("enemy").react("intro");
       audio.announce(`Round ${combat.game.round}`);
+      if (session.chronicle) session.chronicle.roundDivider(combat.game.round);
       break;
     }
     case "roundResult": {
@@ -493,6 +506,7 @@ function onEffect(type, payload) {
         const loser = payload.winner === "player" ? "enemy" : "player";
         if (!combat.actors[loser].koed) rigOf(loser).react("defeated");
       }
+      if (session.chronicle) session.chronicle.recap(payload.winner, payload.round, combat.actors);
       break;
     }
     case "matchOver": {
@@ -564,6 +578,10 @@ addEventListener("keydown", event => {
 
   if (key === "escape") { backToSelect(); return; }
   if (key === "o") { menu.open(); event.preventDefault(); return; }
+  if (key === "n") {
+    if (session.chronicle) { session.chronicle.toggle(); event.preventDefault(); }
+    return;
+  }
   if (key === "c" && session.config.mode !== "pvp") {
     session.cameraMode = session.cameraMode === "side" ? "ots" : "side";
     localStorage.setItem("anima.camera", session.cameraMode);
