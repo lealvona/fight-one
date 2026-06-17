@@ -382,11 +382,14 @@ export function createStage(renderer, stageId = "crucible") {
   function updateCamera(dt, game, midX, separation, t, view = null) {
     const dtSec = Math.min(0.05, dt / 1000);
     const down = !!(view && view.down);
-    const targetDist = 2.55 + separation * 0.8 + (down ? 0.7 : 0);
-    const targetHeight = 1.28 + separation * 0.14 + (down ? 0.5 : 0);
+    const throwing = !!(view && view.throwing);
+    // A throw spans floor to overhead, so pull back and centre the look-at; a
+    // grounded fighter drops it; otherwise frame the standing exchange.
+    const targetDist = 2.55 + separation * 0.8 + (throwing ? 1.1 : down ? 0.7 : 0);
+    const targetHeight = 1.28 + separation * 0.14 + (throwing ? 0.5 : down ? 0.5 : 0);
     const cinematic = game.slowMo > 0;
-    // When a fighter is on the floor, drop the look-at so the fall/get-up frames.
-    camState.focusY += ((down ? 0.5 : 1.0) - camState.focusY) * Math.min(1, dtSec * 3);
+    const focusTarget = throwing ? 1.15 : down ? 0.5 : 1.0;
+    camState.focusY += (focusTarget - camState.focusY) * Math.min(1, dtSec * 3);
 
     camState.midX += (midX - camState.midX) * Math.min(1, dtSec * 5);
     const wantDist = cinematic ? Math.max(3.7, targetDist * 0.92) : targetDist;

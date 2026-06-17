@@ -45,6 +45,7 @@ const session = {
   gauntlet: null,            // ladder: { kind, queue, index, total, charId }
   cameraMode: localStorage.getItem("anima.camera") || localStorage.getItem("kata.camera") || "side",
   seqFx: [],
+  pairedThrow: null,         // active two-body coupling: { attackerId, victimId, couple }
   recording: false,
   playback: null,
   playbackStart: 0,
@@ -235,6 +236,12 @@ function runPaired(kind, attackerId, victimId, color) {
   vRig.playSequence(seq.victim, seq.duration);
   combat.game.hitStop = Math.max(combat.game.hitStop, seq.duration + 80);
 
+  // Couple the two bodies for the duration: the thrower's hands grip the
+  // victim and, while lifted, the victim rides the thrower's hands.
+  session.pairedThrow = seq.couple
+    ? { attackerId, victimId, couple: seq.couple }
+    : null;
+
   const now = performance.now();
   for (const imp of seq.impacts) {
     session.seqFx.push({
@@ -243,6 +250,43 @@ function runPaired(kind, attackerId, victimId, color) {
     });
   }
   return true;
+}
+
+// Per-frame coupling for an active paired throw. Runs after both rigs have
+// posed themselves: it pins the carried victim to the thrower's hands and
+// seats the thrower's grip onto the victim's body so the throw reads as one
+// continuous interaction instead of two independent tracks.
+function coupleThrow() {
+  const d = session.pairedThrow;
+  if (!d) return;
+  const aRig = rigOf(d.attackerId), vRig = rigOf(d.victimId);
+  if (!aRig || !vRig || (!aRig.sequenceActive() && !vRig.sequenceActive())) {
+    session.pairedThrow = null;
+    return;
+  }
+  const c = d.couple;
+  const t = aRig.sequenceProgress();
+
+  // CARRY: place the victim so its anchor sits at the thrower's hand midpoint.
+  const carrying = c.carry && t >= c.carry.from && t <= c.carry.to;
+  if (carrying) {
+    const hl = aRig.anchor("handL"), hr = aRig.anchor("handR");
+    const destX = (hl.x + hr.x) / 2;
+    const destY = (hl.y + hr.y) / 2 + (c.carry.lift || 0);
+    const cur = vRig.anchor(c.carry.anchor);          // current world anchor
+    const offX = cur.x - vRig.x, offY = cur.y - vRig.y; // pose-only group->anchor offset
+    vRig.placeWorld(destX - offX, destY - offY);
+  } else if (vRig.y !== 0) {
+    // Not carried: clear any director-set lift so the ballistic fall is clean.
+    vRig.placeWorld(vRig.x, 0);
+  }
+
+  // GRIP: seat the thrower's hands onto the victim's grip points.
+  if (c.grip && t >= c.grip.from && t <= c.grip.to) {
+    const tL = c.grip.vL ? vRig.anchor(c.grip.vL) : null;
+    const tR = c.grip.vR ? vRig.anchor(c.grip.vR) : null;
+    aRig.gripReach(tL, tR, c.grip.w ?? 0.7);
+  }
 }
 
 function processSeqFx(now) {
@@ -621,11 +665,13 @@ function frame(now) {
     const eAim = aimFor("enemy", "player");
     session.rigs.player.update(rigDt, { actor: combat.actors.player, game: combat.game, t: now, targetX: px, faceSign: 1, aim: pAim });
     session.rigs.enemy.update(rigDt, { actor: combat.actors.enemy, game: combat.game, t: now, targetX: ex, faceSign: -1, aim: eAim });
+    if (session.pairedThrow) coupleThrow();
     processSeqFx(now);
     const camGame = seqLive ? { slowMo: 1, slowMoScale: 0.5, shake: combat.game.shake } : combat.game;
     const view = {
       ots: session.cameraMode === "ots" && session.config.mode !== "pvp",
       px: session.rigs.player.x, ex: session.rigs.enemy.x,
+      throwing: seqLive,
       down: combat.actors.player.downTime > 0 || combat.actors.player.koed || combat.actors.enemy.downTime > 0 || combat.actors.enemy.koed
     };
     session.stage.updateCamera(dtRaw, camGame, (session.rigs.player.x + session.rigs.enemy.x) / 2, sep, now, view);
@@ -717,6 +763,7 @@ hud.el.camButton.addEventListener("click", () => {
 
 // Debug/testing handle (used by headless verification, harmless in play).
 window.__ironflow = session;
+window.__throwTest = (kind, a = "player", v = "enemy") => runPaired(kind, a, v, "#e45745");
 
 const params = new URLSearchParams(location.search);
 buildStage(params.get("stage") || "crucible");
